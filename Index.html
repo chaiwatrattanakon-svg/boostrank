@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rank Boost Platform</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SweetAlert2 for alerts -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        /* ซ่อน Scrollbar แต่ยังเลื่อนได้ */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* สไตล์สำหรับพื้นหลังของแอป */
+        body { background-color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        /* กรอบโทรศัพท์มือถือจำลอง (แสดงผลชัดเจนบนจอคอม และเต็มจอบนมือถือ) */
+        .phone-mockup {
+            width: 100%;
+            max-width: 414px;
+            height: 100vh;
+            max-height: 896px;
+            background-color: white;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        
+        @media (min-width: 640px) {
+            .phone-mockup {
+                height: 896px;
+                border-radius: 40px;
+                border: 8px solid #1f2937;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto no-scrollbar relative bg-gray-50" id="main-content">
+            
+            <!-- 1. View: Login (ใส่เบอร์โทร) -->
+            <section id="view-login" class="absolute inset-0 bg-white p-6 flex flex-col justify-center items-center view-section">
+                <div class="w-24 h-24 bg-indigo-100 rounded-full flex items-center justify-center mb-6 text-indigo-600 text-4xl">
+                    <i class="fas fa-gamepad"></i>
+                </div>
+                <h2 class="text-2xl font-bold mb-2">เข้าสู่ระบบ</h2>
+                <p class="text-gray-500 mb-8 text-center text-sm">ยืนยันตัวตนด้วยเบอร์โทรศัพท์<br>เพื่อความปลอดภัยของคอมมูนิตี้</p>
+                
+                <div class="w-full mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">เบอร์โทรศัพท์</label>
+                    <input type="tel" id="phone-input" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="08X-XXX-XXXX">
+                </div>
+                <button onclick="requestOTP()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition">รับรหัส OTP</button>
+            </section>
+
+            <!-- 2. View: OTP Verification -->
+            <section id="view-otp" class="absolute inset-0 bg-white p-6 flex flex-col justify-center items-center hidden view-section">
+                <h2 class="text-2xl font-bold mb-2">ยืนยันรหัส OTP</h2>
+                <p class="text-gray-500 mb-8 text-center text-sm">เราได้ส่งรหัส 6 หลักไปที่เบอร์<br><span id="display-phone" class="font-bold text-indigo-600"></span></p>
+                
+                <div class="w-full mb-6">
+                    <input type="text" id="otp-input" maxlength="6" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center tracking-[1em] font-bold text-xl" placeholder="••••••">
+                </div>
+                <button onclick="verifyOTP()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition">ยืนยันตัวตน</button>
+                <button onclick="navigate('view-login')" class="mt-4 text-gray-500 text-sm underline">เปลี่ยนเบอร์โทรศัพท์</button>
+            </section>
+
+            <!-- 3. View: Home / Games Selection -->
+            <section id="view-home" class="p-4 hidden view-section pb-24">
+                <div class="bg-indigo-600 text-white p-6 -mx-4 -mt-4 mb-6 rounded-b-3xl shadow-lg">
+                    <h2 class="text-xl font-bold">สวัสดี, ผู้ใช้ยืนยันตัวตนแล้ว <i class="fas fa-check-circle text-green-400"></i></h2>
+                    <p class="text-indigo-200 text-sm mt-1">เลือกเกมที่คุณต้องการปั้มแรงค์วันนี้</p>
+                </div>
+                
+                <h3 class="font-bold text-gray-800 mb-4">เกมยอดนิยม</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Game Card 1 -->
+                    <div onclick="selectGame('ROV')" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center cursor-pointer border border-gray-100 active:bg-gray-50">
+                        <img src="https://ui-avatars.com/api/?name=ROV&background=random&color=fff&size=80" class="w-16 h-16 rounded-2xl mb-3 shadow" alt="ROV">
+                        <span class="font-bold text-gray-700">ROV</span>
+                    </div>
+                    <!-- Game Card 2 -->
+                    <div onclick="selectGame('Valorant')" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center cursor-pointer border border-gray-100 active:bg-gray-50">
+                        <img src="https://ui-avatars.com/api/?name=VAL&background=random&color=fff&size=80" class="w-16 h-16 rounded-2xl mb-3 shadow" alt="Valorant">
+                        <span class="font-bold text-gray-700">Valorant</span>
+                    </div>
+                    <!-- Game Card 3 -->
+                    <div onclick="selectGame('PUBG')" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center cursor-pointer border border-gray-100 active:bg-gray-50">
+                        <img src="https://ui-avatars.com/api/?name=PUBG&background=random&color=fff&size=80" class="w-16 h-16 rounded-2xl mb-3 shadow" alt="PUBG">
+                        <span class="font-bold text-gray-700">PUBG Mobile</span>
+                    </div>
+                    <!-- Game Card 4 -->
+                    <div onclick="selectGame('FreeFire')" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center cursor-pointer border border-gray-100 active:bg-gray-50">
+                        <img src="https://ui-avatars.com/api/?name=FF&background=random&color=fff&size=80" class="w-16 h-16 rounded-2xl mb-3 shadow" alt="FreeFire">
+                        <span class="font-bold text-gray-700">Free Fire</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. View: Booster List -->
+            <section id="view-list" class="p-4 hidden view-section pb-24">
+                <div class="flex justify-between items-center mb-4 mt-2">
+                    <h3 class="font-bold text-gray-800">ผู้รับจ้างปั้ม: <span id="selected-game-name" class="text-indigo-600"></span></h3>
+                    <span class="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full"><i class="fas fa-filter"></i> กรอง</span>
+                </div>
+                
+                <div class="space-y-4">
+                    <!-- Booster Item -->
+                    <div onclick="viewBoosterDetail('เทพซ่า 007')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 cursor-pointer">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center">
+                                <img src="https://ui-avatars.com/api/?name=เทพซ่า&background=10B981&color=fff" class="w-10 h-10 rounded-full mr-3">
+                                <div>
+                                    <h4 class="font-bold text-sm">เทพซ่า 007 <i class="fas fa-check-circle text-blue-500 text-xs" title="ยืนยันตัวตนแล้ว"></i></h4>
+                                    <p class="text-xs text-gray-500">สำเร็จแล้ว 152 งาน</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-yellow-400 text-xs"><i class="fas fa-star"></i> 4.9</div>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-600 mb-2">รับปั้มแรงค์ทุกระดับ ปลอดภัย ไม่ใช้โปร 100%</div>
+                        <div class="flex justify-between items-center mt-3 border-t pt-2">
+                            <span class="text-xs text-gray-500">เริ่มต้น</span>
+                            <span class="font-bold text-indigo-600">฿ 50 / ดาว</span>
+                        </div>
+                    </div>
+
+                    <!-- Booster Item 2 -->
+                    <div onclick="viewBoosterDetail('ProPlayer TH')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 cursor-pointer">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center">
+                                <img src="https://ui-avatars.com/api/?name=Pro&background=F59E0B&color=fff" class="w-10 h-10 rounded-full mr-3">
+                                <div>
+                                    <h4 class="font-bold text-sm">ProPlayer TH <i class="fas fa-check-circle text-blue-500 text-xs"></i></h4>
+                                    <p class="text-xs text-gray-500">สำเร็จแล้ว 89 งาน</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-yellow-400 text-xs"><i class="fas fa-star"></i> 4.8</div>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-600 mb-2">ทีมงานคุณภาพ 24 ชม. ส่งงานไว</div>
+                        <div class="flex justify-between items-center mt-3 border-t pt-2">
+                            <span class="text-xs text-gray-500">เริ่มต้น</span>
+                            <span class="font-bold text-indigo-600">฿ 60 / ดาว</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. View: Booster Detail & Rank Selection -->
+            <section id="view-detail" class="hidden view-section bg-white min-h-full pb-24">
+                <div class="bg-indigo-600 h-32 relative"></div>
+                <div class="px-4 -mt-12 relative z-10">
+                    <img src="https://ui-avatars.com/api/?name=เทพซ่า&background=10B981&color=fff" class="w-24 h-24 rounded-full border-4 border-white shadow-lg mb-3">
+                    <h2 class="text-xl font-bold" id="detail-name">เทพซ่า 007 <i class="fas fa-check-circle text-blue-500"></i></h2>
+                    <p class="text-sm text-gray-500 mb-4">สถานะ: <span class="text-green-500 font-bold">● ว่างรับงาน</span></p>
+                    
+                    <p class="text-sm text-gray-700 mb-6 bg-gray-50 p-3 rounded-lg">
+                        รับปั้มแรงค์ <span id="detail-game-name" class="font-bold"></span> แบบด่วน ปลอดภัย ไว้ใจได้<br>
+                        มีเอกสารยืนยันตัวตนกับทางระบบแล้ว ไม่โกง 100%
+                    </p>
+
+                    <h3 class="font-bold text-gray-800 mb-3 border-b pb-2">เลือกแพ็กเกจราคา</h3>
+                    
+                    <!-- ดรอปดาวน์เลือกแรงค์ -->
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">แรงค์ปัจจุบันของคุณ</label>
+                            <select id="rank-current" class="w-full p-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" onchange="calculatePrice()">
+                                <option value="" disabled selected>-- เลือกแรงค์ปัจจุบัน --</option>
+                                <option value="1">Bronze / Silver</option>
+                                <option value="2">Gold</option>
+                                <option value="3">Platinum</option>
+                                <option value="4">Diamond</option>
+                            </select>
+                        </div>
+                        
+                        <div class="text-center text-gray-400"><i class="fas fa-arrow-down"></i></div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">แรงค์ที่ต้องการ (เป้าหมาย)</label>
+                            <select id="rank-desired" class="w-full p-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" onchange="calculatePrice()">
+                                <option value="" disabled selected>-- เลือกแรงค์ที่ต้องการ --</option>
+                                <option value="2">Gold</option>
+                                <option value="3">Platinum</option>
+                                <option value="4">Diamond</option>
+                                <option value="5">Conqueror / Master</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- สรุปราคา -->
+                    <div class="mt-6 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm font-bold text-gray-700">ราคาสุทธิ:</span>
+                            <span class="text-2xl font-bold text-indigo-600" id="total-price">฿ 0.00</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">*ราคาประเมินเบื้องต้นตามระยะห่างของแรงค์</p>
+                    </div>
+
+                    <!-- ปุ่มดำเนินการชำระเงิน (Disable จนกว่าจะเลือกครบ) -->
+                    <button id="btn-proceed-pay" onclick="proceedToPayment()" disabled class="mt-6 w-full bg-gray-300 text-gray-500 font-bold py-4 rounded-xl transition duration-300 flex justify-center items-center">
+                        <i class="fas fa-lock mr-2"></i> เลือกรายการก่อนชำระเงิน
+                    </button>
+                </div>
+            </section>
+
+            <!-- 6. View: Payment -->
+            <section id="view-payment" class="hidden view-section p-4 bg-gray-50 min-h-full pb-24">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 mb-4 mt-2">
+                    <h3 class="font-bold text-lg mb-4 border-b pb-2">สรุปการสั่งซื้อ</h3>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span class="text-gray-600">ผู้รับจ้าง:</span>
+                        <span class="font-bold" id="pay-booster-name"></span>
+                    </div>
+                    <div class="flex justify-between text-sm mb-2">
+                        <span class="text-gray-600">เกม:</span>
+                        <span class="font-bold" id="pay-game-name"></span>
+                    </div>
+                    <div class="flex justify-between text-sm mb-4">
+                        <span class="text-gray-600">รายการ:</span>
+                        <span class="font-bold text-right" id="pay-rank-detail"></span>
+                    </div>
+                    <div class="flex justify-between text-lg font-bold border-t pt-3">
+                        <span>ยอดชำระ:</span>
+                        <span class="text-indigo-600" id="pay-total-price"></span>
+                    </div>
+                </div>
+
+                <h3 class="font-bold text-gray-800 mb-3 px-1">ช่องทางการชำระเงิน (ระบบคนกลาง)</h3>
+                <div class="space-y-3">
+                    <label class="flex items-center p-4 bg-white border border-gray-200 rounded-xl cursor-pointer">
+                        <input type="radio" name="payment_method" checked class="w-5 h-5 text-indigo-600">
+                        <div class="ml-3 flex-1">
+                            <span class="block text-sm font-bold">Thai QR PromptPay</span>
+                            <span class="block text-xs text-gray-500">ฟรีค่าธรรมเนียม</span>
+                        </div>
+                        <i class="fas fa-qrcode text-xl text-gray-400"></i>
+                    </label>
+                    <label class="flex items-center p-4 bg-white border border-gray-200 rounded-xl cursor-pointer">
+                        <input type="radio" name="payment_method" class="w-5 h-5 text-indigo-600">
+                        <div class="ml-3 flex-1">
+                            <span class="block text-sm font-bold">บัตรเครดิต / เดบิต</span>
+                        </div>
+                        <i class="fas fa-credit-card text-xl text-gray-400"></i>
+                    </label>
+                </div>
+
+                <div class="mt-4 text-xs text-gray-500 text-center bg-green-50 p-3 rounded-lg border border-green-100">
+                    <i class="fas fa-shield-alt text-green-500"></i> เงินของคุณจะถูกพักไว้ที่ระบบส่วนกลาง<br>จนกว่างานจะสำเร็จ ป้องกันการโกง 100%
+                </div>
+
+                <button onclick="confirmPayment()" class="mt-6 w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-indigo-700 transition">
+                    ยืนยันการชำระเงิน
+                </button>
+            </section>
+
+            <!-- 7. View: Post Job (สำหรับผู้รับจ้าง) -->
+            <section id="view-post" class="hidden view-section p-4 bg-white min-h-full pb-24">
+                <h2 class="text-2xl font-bold mb-1 mt-2">ลงประกาศรับงาน</h2>
+                <p class="text-sm text-gray-500 mb-6">สร้างรายได้จากการเล่นเกมที่คุณถนัด</p>
+
+                <form onsubmit="submitPostJob(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">เลือกเกม</label>
+                        <select required class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
+                            <option value="">-- เลือกเกม --</option>
+                            <option>ROV</option>
+                            <option>Valorant</option>
+                            <option>PUBG Mobile</option>
+                            <option>Free Fire</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">รายละเอียดบริการของคุณ</label>
+                        <textarea required rows="3" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="เช่น รับกดแรงค์กลางคืน ว่างตลอด อัตราชนะสูง..."></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">ราคาเริ่มต้น (บาท)</label>
+                            <input required type="number" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="เช่น 50">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">หน่วยราคา</label>
+                            <select class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
+                                <option>ต่อดาว</option>
+                                <option>ต่อแรงค์</option>
+                                <option>เหมาจบ</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="bg-indigo-50 p-4 rounded-lg mt-4 border border-indigo-100">
+                        <div class="flex items-start">
+                            <i class="fas fa-info-circle text-indigo-500 mt-1 mr-2"></i>
+                            <p class="text-xs text-gray-600">บัญชีของคุณได้รับการ <span class="font-bold text-indigo-600">ยืนยันตัวตน (KYC)</span> เรียบร้อยแล้ว ประกาศของคุณจะมีเครื่องหมาย Verified ทำให้ลูกค้าน่าเชื่อถือ</p>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-indigo-700 transition mt-6">
+                        ลงประกาศทันที
+                    </button>
+                </form>
+            </section>
+
+            <!-- 8. View: Profile -->
+            <section id="view-profile" class="hidden view-section p-4 bg-gray-50 min-h-full pb-24">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col items-center mt-4">
+                    <div class="relative">
+                        <img src="https://ui-avatars.com/api/?name=User&background=4F46E5&color=fff" class="w-24 h-24 rounded-full mb-3 shadow">
+                        <div class="absolute bottom-3 right-0 bg-white rounded-full p-1 shadow">
+                            <i class="fas fa-check-circle text-blue-500 text-xl" title="ยืนยันเบอร์แล้ว"></i>
+                        </div>
+                    </div>
+                    <h2 class="text-xl font-bold">User_<span id="profile-phone"></span></h2>
+                    <span class="bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full mt-2 font-bold"><i class="fas fa-shield-check"></i> ยืนยันตัวตนสำเร็จ</span>
+                </div>
+
+                <div class="mt-6 space-y-2">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                        <div class="flex items-center"><i class="fas fa-history w-6 text-gray-400"></i> <span>ประวัติการจ้างงาน</span></div>
+                        <i class="fas fa-chevron-right text-gray-300"></i>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                        <div class="flex items-center"><i class="fas fa-wallet w-6 text-gray-400"></i> <span>กระเป๋าเงิน / ถอนเงิน</span></div>
+                        <i class="fas fa-chevron-right text-gray-300"></i>
+                    </div>
+                    <div onclick="logout()" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer mt-4 text-red-500">
+                        <div class="flex items-center font-bold"><i class="fas fa-sign-out-alt w-6"></i> <span>ออกจากระบบ</span></div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Bottom Navigation Bar (ซ่อนในหน้า Login) -->
+        <nav id="bottom-nav" class="hidden bg-white border-t border-gray-200 flex justify-around items-center p-2 pb-4 absolute bottom-0 w-full z-20">
+            <button onclick="navigate('view-home')" class="nav-btn flex flex-col items-center p-2 text-indigo-600 flex-1" data-target="view-home">
+                <i class="fas fa-home text-xl mb-1"></i>
+                <span class="text-[10px] font-bold">หน้าแรก</span>
+            </button>
+            <button onclick="navigate('view-post')" class="nav-btn flex flex-col items-center p-2 text-gray-400 flex-1" data-target="view-post">
+                <i class="fas fa-plus-circle text-xl mb-1"></i>
+                <span class="text-[10px] font-bold">ลงประกาศ</span>
+            </button>
+            <button onclick="navigate('view-profile')" class="nav-btn flex flex-col items-center p-2 text-gray-400 flex-1" data-target="view-profile">
+                <i class="fas fa-user text-xl mb-1"></i>
+                <span class="text-[10px] font-bold">โปรไฟล์</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // State Management
+        let appState = {
+            phoneNumber: '',
+            currentGame: '',
+            currentBooster: '',
+            priceCalculation: 0,
+            viewHistory: []
+        };
+
+        // --- ระบบนำทาง (Navigation) ---
+        function navigate(viewId) {
+            // ซ่อนทุกหน้า
+            document.querySelectorAll('.view-section').forEach(el => {
+                el.classList.add('hidden');
+            });
+            // แสดงหน้าที่เลือก
+            document.getElementById(viewId).classList.remove('hidden');
+            document.getElementById('main-content').scrollTop = 0;
+
+            // จัดการ Header & Bottom Nav
+            const topHeader = document.getElementById('top-header');
+            const bottomNav = document.getElementById('bottom-nav');
+            const backBtn = document.getElementById('back-btn');
+            const headerTitle = document.getElementById('header-title');
+
+            if(viewId === 'view-login' || viewId === 'view-otp') {
+                topHeader.classList.add('hidden');
+                bottomNav.classList.add('hidden');
+            } else {
+                topHeader.classList.remove('hidden');
+                bottomNav.classList.remove('hidden');
+            }
+
+            // จัดการปุ่ม Back และชื่อ Title ด้านบน
+            backBtn.classList.remove('hidden');
+            switch(viewId) {
+                case 'view-home': 
+                    backBtn.classList.add('hidden'); 
+                    headerTitle.innerText = "บริการปั้มแรงค์";
+                    updateBottomNav('view-home');
+                    break;
+                case 'view-list': 
+                    headerTitle.innerText = "เลือกผู้รับจ้าง"; 
+                    break;
+                case 'view-detail': 
+                    headerTitle.innerText = "รายละเอียดงาน"; 
+                    break;
+                case 'view-payment': 
+                    headerTitle.innerText = "ชำระเงิน"; 
+                    break;
+                case 'view-post': 
+                    backBtn.classList.add('hidden');
+                    headerTitle.innerText = "ลงประกาศรับปั้ม"; 
+                    updateBottomNav('view-post');
+                    break;
+                case 'view-profile': 
+                    backBtn.classList.add('hidden');
+                    headerTitle.innerText = "โปรไฟล์ส่วนตัว"; 
+                    updateBottomNav('view-profile');
+                    break;
+            }
+
+            // บันทึกประวัติเพื่อปุ่ม Back (ถ้าไม่ใช่เมนูหลัก)
+            if(['view-home', 'view-post', 'view-profile', 'view-login'].includes(viewId)) {
+                appState.viewHistory = [viewId];
+            } else {
+                appState.viewHistory.push(viewId);
+            }
+        }
+
+        function goBack() {
+            if(appState.viewHistory.length > 1) {
+                appState.viewHistory.pop(); // เอาหน้าปัจจุบันออก
+                const prevView = appState.viewHistory.pop(); // เอาหน้าก่อนหน้าออกเพื่อเข้าฟังก์ชัน navigate ใหม่
+                navigate(prevView);
+            } else {
+                navigate('view-home');
+            }
+        }
+
+        function updateBottomNav(activeId) {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if(btn.dataset.target === activeId) {
+                    btn.classList.replace('text-gray-400', 'text-indigo-600');
+                } else {
+                    btn.classList.replace('text-indigo-600', 'text-gray-400');
+                }
+            });
+        }
+
+        // --- ระบบ Authentication (Mock OTP) ---
+        function requestOTP() {
+            const phone = document.getElementById('phone-input').value;
+            if(!phone || phone.length < 9) {
+                Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ถูกต้อง', text: 'กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง', confirmButtonColor: '#4F46E5' });
+                return;
+            }
+            appState.phoneNumber = phone;
+            document.getElementById('display-phone').innerText = phone;
+            
+            // จำลองการส่ง OTP
+            Swal.fire({
+                title: 'รหัส OTP ของคุณคือ',
+                text: '123456 (Mock OTP)',
+                icon: 'info',
+                confirmButtonText: 'ตกลง',
+                confirmButtonColor: '#4F46E5'
+            }).then(() => {
+                navigate('view-otp');
+            });
+        }
+
+        function verifyOTP() {
+            const otp = document.getElementById('otp-input').value;
+            if(otp === '123456') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'ยืนยันตัวตนสำเร็จ',
+                    text: 'เข้าสู่ระบบอย่างปลอดภัย',
+                    confirmButtonColor: '#4F46E5',
+                    timer: 1500,
+                    showConfirmButton: false
+                }).then(() => {
+                    // ตัดเบอร์โชว์แค่ 4 ตัวท้าย
+                    document.getElementById('profile-phone').innerText = appState.phoneNumber.slice(-4);
+                    navigate('view-home');
+                });
+            } else {
+                Swal.fire({ icon: 'error', title: 'รหัสผิดพลาด', text: 'กรุณากรอกรหัส 123456', confirmButtonColor: '#4F46E5' });
+            }
+        }
+
+        function logout() {
+            Swal.fire({
+                title: 'ต้องการออกจากระบบ?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ออกจากระบบ',
+                cancelButtonText: 'ยกเลิก'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('phone-input').value = '';
+                    document.getElementById('otp-input').value = '';
+                    navigate('view-login');
+                }
+            });
+        }
+
+        // --- ระบบ Business Logic (เลือกเกม -> เลือกคน -> คำนวณราคา -> จ่ายเงิน) ---
+        function selectGame(gameName) {
+            appState.currentGame = gameName;
+            document.getElementById('selected-game-name').innerText = gameName;
+            navigate('view-list');
+        }
+
+        function viewBoosterDetail(boosterName) {
+            appState.currentBooster = boosterName;
+            document.getElementById('detail-name').innerHTML = `${boosterName} <i class="fas fa-check-circle text-blue-500"></i>`;
+            document.getElementById('detail-game-name').innerText = appState.currentGame;
+            
+            // รีเซ็ตค่าดรอปดาวน์
+            document.getElementById('rank-current').value = "";
+            document.getElementById('rank-desired').value = "";
+            calculatePrice();
+            
+            navigate('view-detail');
+        }
+
+        function calculatePrice() {
+            const current = parseInt(document.getElementById('rank-current').value);
+            const desired = parseInt(document.getElementById('rank-desired').value);
+            const btn = document.getElementById('btn-proceed-pay');
+            const priceDisplay = document.getElementById('total-price');
+
+            if(current && desired) {
+                if(current >= desired) {
+                    Swal.fire({ icon: 'warning', title: 'เลือกไม่ถูกต้อง', text: 'แรงค์เป้าหมายต้องสูงกว่าแรงค์ปัจจุบัน', confirmButtonColor: '#4F46E5' });
+                    document.getElementById('rank-desired').value = "";
+                    resetPriceState(btn, priceDisplay);
+                    return;
+                }
+                
+                // คำนวณราคาจำลอง (ห่าง 1 ระดับ = 300 บาท, ห่าง 2 = 600, etc.)
+                const diff = desired - current;
+                appState.priceCalculation = diff * 300;
+                
+                priceDisplay.innerText = `฿ ${appState.priceCalculation.toFixed(2)}`;
+                
+                // Enable Button
+                btn.disabled = false;
+                btn.innerHTML = 'ดำเนินการชำระเงิน <i class="fas fa-arrow-right ml-2"></i>';
+                btn.classList.remove('bg-gray-300', 'text-gray-500');
+                btn.classList.add('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
+            } else {
+                resetPriceState(btn, priceDisplay);
+            }
+        }
+
+        function resetPriceState(btn, priceDisplay) {
+            priceDisplay.innerText = '฿ 0.00';
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-lock mr-2"></i> เลือกรายการก่อนชำระเงิน';
+            btn.classList.add('bg-gray-300', 'text-gray-500');
+            btn.classList.remove('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
+        }
+
+        function proceedToPayment() {
+            // โอนข้อมูลไปหน้าชำระเงิน
+            document.getElementById('pay-booster-name').innerText = appState.currentBooster;
+            document.getElementById('pay-game-name').innerText = appState.currentGame;
+            
+            const currText = document.getElementById('rank-current').options[document.getElementById('rank-current').selectedIndex].text;
+            const desText = document.getElementById('rank-desired').options[document.getElementById('rank-desired').selectedIndex].text;
+            
+            document.getElementById('pay-rank-detail').innerText = `${currText} ➔ ${desText}`;
+            document.getElementById('pay-total-price').innerText = `฿ ${appState.priceCalculation.toFixed(2)}`;
+            
+            navigate('view-payment');
+        }
+
+        function confirmPayment() {
+            Swal.fire({
+                title: 'กำลังดำเนินการ',
+                html: 'กรุณารอสักครู่ระบบกำลังสร้างรายการชำระเงิน...',
+                timer: 2000,
+                timerProgressBar: true,
+                didOpen: () => { Swal.showLoading(); }
+            }).then(() => {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'ชำระเงินสำเร็จ!',
+                    text: 'เงินของคุณถูกพักไว้ในระบบส่วนกลางแล้ว ผู้รับจ้างจะเริ่มงานทันที',
+                    confirmButtonColor: '#4F46E5'
+                }).then(() => {
+                    navigate('view-home');
+                });
+            });
+        }
+
+        function submitPostJob(e) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'success',
+                title: 'ลงประกาศสำเร็จ!',
+                text: 'ประกาศของคุณแสดงในหน้ารายการแล้ว',
+                confirmButtonColor: '#4F46E5'
+            }).then(() => {
+                navigate('view-home');
+            });
+        }
+
+    </script>
+</body>
+</html>

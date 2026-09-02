@@ -43,7 +43,14 @@
 </head>
 <body>
 
-    
+    <div class="phone-mockup">
+        <!-- Top Header Bar -->
+        <header id="top-header" class="hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between z-20">
+            <button id="back-btn" onclick="goBack()" class="text-gray-600 hover:text-indigo-600 transition">
+                <i class="fas fa-arrow-left text-lg"></i>
+            </button>
+            <h1 id="header-title" class="font-bold text-gray-800 text-base">บริการปั้มแรงค์</h1>
+            <div class="w-6"></div> <!-- Spacer for center alignment -->
         </header>
 
         <!-- Main Content Area -->
@@ -348,7 +355,7 @@
 
         </main>
 
-        <!-- Bottom Navigation Bar (ซ่อนในหน้า Login) -->
+        <!-- Bottom Navigation Bar -->
         <nav id="bottom-nav" class="hidden bg-white border-t border-gray-200 flex justify-around items-center p-2 pb-4 absolute bottom-0 w-full z-20">
             <button onclick="navigate('view-home')" class="nav-btn flex flex-col items-center p-2 text-indigo-600 flex-1" data-target="view-home">
                 <i class="fas fa-home text-xl mb-1"></i>
@@ -363,31 +370,25 @@
                 <span class="text-[10px] font-bold">โปรไฟล์</span>
             </button>
         </nav>
-
     </div>
 
     <!-- JavaScript Logic -->
     <script>
-        // State Management
         let appState = {
             phoneNumber: '',
             currentGame: '',
             currentBooster: '',
             priceCalculation: 0,
-            viewHistory: []
+            viewHistory: ['view-login']
         };
 
-        // --- ระบบนำทาง (Navigation) ---
         function navigate(viewId) {
-            // ซ่อนทุกหน้า
             document.querySelectorAll('.view-section').forEach(el => {
                 el.classList.add('hidden');
             });
-            // แสดงหน้าที่เลือก
             document.getElementById(viewId).classList.remove('hidden');
             document.getElementById('main-content').scrollTop = 0;
 
-            // จัดการ Header & Bottom Nav
             const topHeader = document.getElementById('top-header');
             const bottomNav = document.getElementById('bottom-nav');
             const backBtn = document.getElementById('back-btn');
@@ -401,7 +402,6 @@
                 bottomNav.classList.remove('hidden');
             }
 
-            // จัดการปุ่ม Back และชื่อ Title ด้านบน
             backBtn.classList.remove('hidden');
             switch(viewId) {
                 case 'view-home': 
@@ -430,7 +430,6 @@
                     break;
             }
 
-            // บันทึกประวัติเพื่อปุ่ม Back (ถ้าไม่ใช่เมนูหลัก)
             if(['view-home', 'view-post', 'view-profile', 'view-login'].includes(viewId)) {
                 appState.viewHistory = [viewId];
             } else {
@@ -440,8 +439,8 @@
 
         function goBack() {
             if(appState.viewHistory.length > 1) {
-                appState.viewHistory.pop(); // เอาหน้าปัจจุบันออก
-                const prevView = appState.viewHistory.pop(); // เอาหน้าก่อนหน้าออกเพื่อเข้าฟังก์ชัน navigate ใหม่
+                appState.viewHistory.pop();
+                const prevView = appState.viewHistory[appState.viewHistory.length - 1];
                 navigate(prevView);
             } else {
                 navigate('view-home');
@@ -458,7 +457,6 @@
             });
         }
 
-        // --- ระบบ Authentication (Mock OTP) ---
         function requestOTP() {
             const phone = document.getElementById('phone-input').value;
             if(!phone || phone.length < 9) {
@@ -468,7 +466,6 @@
             appState.phoneNumber = phone;
             document.getElementById('display-phone').innerText = phone;
             
-            // จำลองการส่ง OTP
             Swal.fire({
                 title: 'รหัส OTP ของคุณคือ',
                 text: '123456 (Mock OTP)',
@@ -491,7 +488,6 @@
                     timer: 1500,
                     showConfirmButton: false
                 }).then(() => {
-                    // ตัดเบอร์โชว์แค่ 4 ตัวท้าย
                     document.getElementById('profile-phone').innerText = appState.phoneNumber.slice(-4);
                     navigate('view-home');
                 });
@@ -518,7 +514,6 @@
             });
         }
 
-        // --- ระบบ Business Logic (เลือกเกม -> เลือกคน -> คำนวณราคา -> จ่ายเงิน) ---
         function selectGame(gameName) {
             appState.currentGame = gameName;
             document.getElementById('selected-game-name').innerText = gameName;
@@ -530,7 +525,6 @@
             document.getElementById('detail-name').innerHTML = `${boosterName} <i class="fas fa-check-circle text-blue-500"></i>`;
             document.getElementById('detail-game-name').innerText = appState.currentGame;
             
-            // รีเซ็ตค่าดรอปดาวน์
             document.getElementById('rank-current').value = "";
             document.getElementById('rank-desired').value = "";
             calculatePrice();
@@ -552,13 +546,11 @@
                     return;
                 }
                 
-                // คำนวณราคาจำลอง (ห่าง 1 ระดับ = 300 บาท, ห่าง 2 = 600, etc.)
                 const diff = desired - current;
                 appState.priceCalculation = diff * 300;
                 
                 priceDisplay.innerText = `฿ ${appState.priceCalculation.toFixed(2)}`;
                 
-                // Enable Button
                 btn.disabled = false;
                 btn.innerHTML = 'ดำเนินการชำระเงิน <i class="fas fa-arrow-right ml-2"></i>';
                 btn.classList.remove('bg-gray-300', 'text-gray-500');
@@ -569,22 +561,22 @@
         }
 
         function resetPriceState(btn, priceDisplay) {
-            priceDisplay.innerText = '฿ 0.00';
+            appState.priceCalculation = 0;
+            priceDisplay.innerText = "฿ 0.00";
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-lock mr-2"></i> เลือกรายการก่อนชำระเงิน';
-            btn.classList.add('bg-gray-300', 'text-gray-500');
             btn.classList.remove('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
+            btn.classList.add('bg-gray-300', 'text-gray-500');
         }
 
         function proceedToPayment() {
-            // โอนข้อมูลไปหน้าชำระเงิน
             document.getElementById('pay-booster-name').innerText = appState.currentBooster;
             document.getElementById('pay-game-name').innerText = appState.currentGame;
             
-            const currText = document.getElementById('rank-current').options[document.getElementById('rank-current').selectedIndex].text;
-            const desText = document.getElementById('rank-desired').options[document.getElementById('rank-desired').selectedIndex].text;
+            const currentText = document.getElementById('rank-current').options[document.getElementById('rank-current').selectedIndex].text;
+            const desiredText = document.getElementById('rank-desired').options[document.getElementById('rank-desired').selectedIndex].text;
+            document.getElementById('pay-rank-detail').innerText = `${currentText} ➔ ${desiredText}`;
             
-            document.getElementById('pay-rank-detail').innerText = `${currText} ➔ ${desText}`;
             document.getElementById('pay-total-price').innerText = `฿ ${appState.priceCalculation.toFixed(2)}`;
             
             navigate('view-payment');
@@ -592,35 +584,26 @@
 
         function confirmPayment() {
             Swal.fire({
-                title: 'กำลังดำเนินการ',
-                html: 'กรุณารอสักครู่ระบบกำลังสร้างรายการชำระเงิน...',
-                timer: 2000,
-                timerProgressBar: true,
-                didOpen: () => { Swal.showLoading(); }
-            }).then(() => {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'ชำระเงินสำเร็จ!',
-                    text: 'เงินของคุณถูกพักไว้ในระบบส่วนกลางแล้ว ผู้รับจ้างจะเริ่มงานทันที',
-                    confirmButtonColor: '#4F46E5'
-                }).then(() => {
-                    navigate('view-home');
-                });
-            });
-        }
-
-        function submitPostJob(e) {
-            e.preventDefault();
-            Swal.fire({
                 icon: 'success',
-                title: 'ลงประกาศสำเร็จ!',
-                text: 'ประกาศของคุณแสดงในหน้ารายการแล้ว',
+                title: 'ชำระเงินสำเร็จ!',
+                text: 'เงินถูกพักไว้ในระบบคนกลางเรียบร้อยแล้ว กรุณารอผู้รับจ้างติดต่อกลับ',
                 confirmButtonColor: '#4F46E5'
             }).then(() => {
                 navigate('view-home');
             });
         }
 
+        function submitPostJob(event) {
+            event.preventDefault();
+            Swal.fire({
+                icon: 'success',
+                title: 'ลงประกาศสำเร็จ',
+                text: 'ประกาศของคุณแสดงผลในระบบเรียบร้อยแล้ว',
+                confirmButtonColor: '#4F46E5'
+            }).then(() => {
+                navigate('view-home');
+            });
+        }
     </script>
 </body>
 </html>

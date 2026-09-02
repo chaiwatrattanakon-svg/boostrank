@@ -3,587 +3,428 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rank Boost Platform</title>
-    <!-- Tailwind CSS -->
+    <title>RankBoost Pro - ระบบรับจ้างปั๊มแรงค์ปลอดภัย 100%</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome for Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- SweetAlert2 for alerts -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        /* ซ่อน Scrollbar แต่ยังเลื่อนได้ */
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* สไตล์สำหรับพื้นหลังของแอป */
-        body { background-color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
-        /* กรอบโทรศัพท์มือถือจำลอง (แสดงผลชัดเจนบนจอคอม และเต็มจอบนมือถือ) */
-        .phone-mockup {
-            width: 100%;
-            max-width: 414px;
-            height: 100vh;
-            max-height: 896px;
-            background-color: white;
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #0f172a;
         }
-        
-        @media (min-width: 640px) {
-            .phone-mockup {
-                height: 896px;
-                border-radius: 40px;
-                border: 8px solid #1f2937;
-            }
+        /* Mobile Frame Container */
+        .phone-frame {
+            width: 100%;
+            max-width: 412px;
+            height: 847px;
+            background: #1e293b;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            border-radius: 40px;
+            overflow: hidden;
+            position: relative;
+            border: 10px solid #334155;
+        }
+        .screen-content {
+            height: calc(100% - 60px);
+            overflow-y: auto;
+        }
+        .screen-content::-webkit-scrollbar {
+            width: 4px;
+        }
+        .screen-content::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
         }
     </style>
 </head>
-<body>
+<body class="flex items-center justify-center min-h-screen py-6">
 
-    <div class="phone-mockup">
-        <!-- Top Header Bar -->
-        <header id="top-header" class="hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between z-20">
-            <button id="back-btn" onclick="goBack()" class="text-gray-600 hover:text-indigo-600 transition">
-                <i class="fas fa-arrow-left text-lg"></i>
-            </button>
-            <h1 id="header-title" class="font-bold text-gray-800 text-base">บริการปั้มแรงค์</h1>
-            <div class="w-6"></div>
-        </header>
+    <!-- โครงสร้างจำลองหน้าจอโทรศัพท์มือถือ -->
+    <div class="phone-frame flex flex-col justify-between">
+        
+        <!-- Status Bar มือถือจำลอง -->
+        <div class="bg-slate-900 text-white px-6 py-2 flex justify-between items-center text-xs z-50">
+            <span id="current-time">11:51</span>
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-signal"></i>
+                <i class="fa-solid fa-wifi"></i>
+                <i class="fa-solid fa-battery-full text-emerald-400"></i>
+            </div>
+        </div>
 
-        <!-- Main Content Area -->
-        <main class="flex-1 overflow-y-auto no-scrollbar relative bg-gray-50" id="main-content">
-            
-            <!-- 1. View: Login -->
-            <section id="view-login" class="absolute inset-0 bg-white p-6 flex flex-col justify-center items-center view-section">
-                <div class="w-24 h-24 bg-indigo-100 rounded-full flex items-center justify-center mb-6 text-indigo-600 text-4xl">
-                    <i class="fas fa-gamepad"></i>
-                </div>
-                <h2 class="text-2xl font-bold mb-2">เข้าสู่ระบบ</h2>
-                <p class="text-gray-500 mb-8 text-center text-sm">ยืนยันตัวตนด้วยเบอร์โทรศัพท์<br>เพื่อความปลอดภัยของคอมมูนิตี้</p>
-                
-                <div class="w-full mb-4">
-                    <label class="block text-gray-700 text-sm font-bold mb-2">เบอร์โทรศัพท์</label>
-                    <input type="tel" id="phone-input" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="08X-XXX-XXXX">
-                </div>
-                <button onclick="requestOTP()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition">รับรหัส OTP</button>
-            </section>
+        <!-- พื้นที่แสดงผลหลัก (Views เปลี่ยนไปตาม State ของ JS) -->
+        <div class="screen-content relative bg-slate-900 text-slate-100">
 
-            <!-- 2. View: OTP Verification -->
-            <section id="view-otp" class="absolute inset-0 bg-white p-6 flex flex-col justify-center items-center hidden view-section">
-                <h2 class="text-2xl font-bold mb-2">ยืนยันรหัส OTP</h2>
-                <p class="text-gray-500 mb-8 text-center text-sm">เราได้ส่งรหัส 6 หลักไปที่เบอร์<br><span id="display-phone" class="font-bold text-indigo-600"></span></p>
-                
-                <div class="w-full mb-6">
-                    <input type="text" id="otp-input" maxlength="6" class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center tracking-[1em] font-bold text-xl" placeholder="••••••">
-                </div>
-                <button onclick="verifyOTP()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition">ยืนยันตัวตน</button>
-                <button onclick="navigate('view-login')" class="mt-4 text-gray-500 text-sm underline">เปลี่ยนเบอร์โทรศัพท์</button>
-            </section>
-
-            <!-- 3. View: Home / Games Selection -->
-            <section id="view-home" class="p-4 hidden view-section pb-24">
-                <div class="bg-indigo-600 text-white p-6 -mx-4 -mt-4 mb-6 rounded-b-3xl shadow-lg">
-                    <h2 class="text-xl font-bold">สวัสดี, ผู้ใช้ยืนยันตัวตนแล้ว <i class="fas fa-check-circle text-green-400"></i></h2>
-                    <p class="text-indigo-200 text-sm mt-1">เลือกเกมที่คุณต้องการปั้มแรงค์วันนี้</p>
-                </div>
-                
-                <h3 class="font-bold text-gray-800 mb-4">เกมยอดนิยม</h3>
-                <div class="grid grid-cols-2 gap-4">
-                    <div onclick="selectGame('ROV')" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center cursor-pointer border border-gray-100 active:bg-gray-50">
-                        <img src="https://ui-avatars.com/api/?name=ROV&background=random&color=fff&size=80" class="w-16 h-16 rounded-2xl mb-3 shadow" alt="ROV">
-                        <span class="font-bold text-gray-700">ROV</span>
+            <!-- 1. หน้า Login / ยืนยันตัวตนด้วยเบอร์โทร + OTP -->
+            <div id="view-auth" class="p-6 flex flex-col justify-center h-full">
+                <div class="text-center mb-8">
+                    <div class="inline-block p-4 bg-amber-500/10 rounded-2xl text-amber-400 mb-3 text-3xl">
+                        <i class="fa-solid fa-shield-halved"></i>
                     </div>
-                    <div onclick="selectGame('Valorant')" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center cursor-pointer border border-gray-100 active:bg-gray-50">
-                        <img src="https://ui-avatars.com/api/?name=VAL&background=random&color=fff&size=80" class="w-16 h-16 rounded-2xl mb-3 shadow" alt="Valorant">
-                        <span class="font-bold text-gray-700">Valorant</span>
-                    </div>
-                    <div onclick="selectGame('PUBG')" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center cursor-pointer border border-gray-100 active:bg-gray-50">
-                        <img src="https://ui-avatars.com/api/?name=PUBG&background=random&color=fff&size=80" class="w-16 h-16 rounded-2xl mb-3 shadow" alt="PUBG">
-                        <span class="font-bold text-gray-700">PUBG Mobile</span>
-                    </div>
-                    <div onclick="selectGame('FreeFire')" class="bg-white rounded-xl shadow-sm p-4 flex flex-col items-center cursor-pointer border border-gray-100 active:bg-gray-50">
-                        <img src="https://ui-avatars.com/api/?name=FF&background=random&color=fff&size=80" class="w-16 h-16 rounded-2xl mb-3 shadow" alt="FreeFire">
-                        <span class="font-bold text-gray-700">Free Fire</span>
-                    </div>
+                    <h1 class="text-2xl font-bold text-white">RankBoost Pro</h1>
+                    <p class="text-sm text-slate-400 mt-1">ระบบกลางปั๊มแรงค์ ป้องกันการโกง 100%</p>
                 </div>
-            </section>
 
-            <!-- 4. View: Booster List -->
-            <section id="view-list" class="p-4 hidden view-section pb-24">
-                <div class="flex justify-between items-center mb-4 mt-2">
-                    <h3 class="font-bold text-gray-800">ผู้รับจ้างปั้ม: <span id="selected-game-name" class="text-indigo-600"></span></h3>
-                    <span class="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full"><i class="fas fa-filter"></i> กรอง</span>
-                </div>
-                
                 <div class="space-y-4">
-                    <div onclick="viewBoosterDetail('เทพซ่า 007')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 cursor-pointer">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center">
-                                <img src="https://ui-avatars.com/api/?name=เทพซ่า&background=10B981&color=fff" class="w-10 h-10 rounded-full mr-3">
-                                <div>
-                                    <h4 class="font-bold text-sm">เทพซ่า 007 <i class="fas fa-check-circle text-blue-500 text-xs"></i></h4>
-                                    <p class="text-xs text-gray-500">สำเร็จแล้ว 152 งาน</p>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-yellow-400 text-xs"><i class="fas fa-star"></i> 4.9</div>
-                            </div>
-                        </div>
-                        <div class="text-xs text-gray-600 mb-2">รับปั้มแรงค์ทุกระดับ ปลอดภัย ไม่ใช้โปร 100%</div>
-                        <div class="flex justify-between items-center mt-3 border-t pt-2">
-                            <span class="text-xs text-gray-500">เริ่มต้น</span>
-                            <span class="font-bold text-indigo-600">฿ 50 / ดาว</span>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">เบอร์โทรศัพท์มือถือ</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">+66</span>
+                            <input type="tel" id="phone-input" placeholder="812345678" maxlength="10" class="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-amber-500 text-sm">
                         </div>
                     </div>
-
-                    <div onclick="viewBoosterDetail('ProPlayer TH')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 cursor-pointer">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center">
-                                <img src="https://ui-avatars.com/api/?name=Pro&background=F59E0B&color=fff" class="w-10 h-10 rounded-full mr-3">
-                                <div>
-                                    <h4 class="font-bold text-sm">ProPlayer TH <i class="fas fa-check-circle text-blue-500 text-xs"></i></h4>
-                                    <p class="text-xs text-gray-500">สำเร็จแล้ว 89 งาน</p>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-yellow-400 text-xs"><i class="fas fa-star"></i> 4.8</div>
-                            </div>
-                        </div>
-                        <div class="text-xs text-gray-600 mb-2">ทีมงานคุณภาพ 24 ชม. ส่งงานไว</div>
-                        <div class="flex justify-between items-center mt-3 border-t pt-2">
-                            <span class="text-xs text-gray-500">เริ่มต้น</span>
-                            <span class="font-bold text-indigo-600">฿ 60 / ดาว</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 5. View: Booster Detail -->
-            <section id="view-detail" class="hidden view-section bg-white min-h-full pb-24">
-                <div class="bg-indigo-600 h-32 relative"></div>
-                <div class="px-4 -mt-12 relative z-10">
-                    <img src="https://ui-avatars.com/api/?name=เทพซ่า&background=10B981&color=fff" class="w-24 h-24 rounded-full border-4 border-white shadow-lg mb-3">
-                    <h2 class="text-xl font-bold" id="detail-name">เทพซ่า 007 <i class="fas fa-check-circle text-blue-500"></i></h2>
-                    <p class="text-sm text-gray-500 mb-4">สถานะ: <span class="text-green-500 font-bold">● ว่างรับงาน</span></p>
-                    
-                    <p class="text-sm text-gray-700 mb-6 bg-gray-50 p-3 rounded-lg">
-                        รับปั้มแรงค์ <span id="detail-game-name" class="font-bold"></span> แบบด่วน ปลอดภัย ไว้ใจได้<br>
-                        มีเอกสารยืนยันตัวตนกับทางระบบแล้ว ไม่โกง 100%
-                    </p>
-
-                    <h3 class="font-bold text-gray-800 mb-3 border-b pb-2">เลือกแพ็กเกจราคา</h3>
-                    
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-xs font-bold text-gray-700 mb-1">แรงค์ปัจจุบันของคุณ</label>
-                            <select id="rank-current" class="w-full p-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" onchange="calculatePrice()">
-                                <option value="" disabled selected>-- เลือกแรงค์ปัจจุบัน --</option>
-                                <option value="1">Bronze / Silver</option>
-                                <option value="2">Gold</option>
-                                <option value="3">Platinum</option>
-                                <option value="4">Diamond</option>
-                            </select>
-                        </div>
-                        
-                        <div class="text-center text-gray-400"><i class="fas fa-arrow-down"></i></div>
-
-                        <div>
-                            <label class="block text-xs font-bold text-gray-700 mb-1">แรงค์ที่ต้องการ (เป้าหมาย)</label>
-                            <select id="rank-desired" class="w-full p-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" onchange="calculatePrice()">
-                                <option value="" disabled selected>-- เลือกแรงค์ที่ต้องการ --</option>
-                                <option value="2">Gold</option>
-                                <option value="3">Platinum</option>
-                                <option value="4">Diamond</option>
-                                <option value="5">Conqueror / Master</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="mt-6 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                        <div class="flex justify-between items-center">
-                            <span class="text-sm font-bold text-gray-700">ราคาสุทธิ:</span>
-                            <span class="text-2xl font-bold text-indigo-600" id="total-price">฿ 0.00</span>
-                        </div>
-                        <p class="text-xs text-gray-500 mt-1">*ราคาประเมินเบื้องต้นตามระยะห่างของแรงค์</p>
-                    </div>
-
-                    <button id="btn-proceed-pay" onclick="proceedToPayment()" disabled class="mt-6 w-full bg-gray-300 text-gray-500 font-bold py-4 rounded-xl transition duration-300 flex justify-center items-center">
-                        <i class="fas fa-lock mr-2"></i> เลือกรายการก่อนชำระเงิน
+                    <button onclick="requestOTP()" class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl transition duration-200 text-sm shadow-lg shadow-amber-500/20">
+                        ขอรหัส OTP
                     </button>
                 </div>
-            </section>
 
-            <!-- 6. View: Payment -->
-            <section id="view-payment" class="hidden view-section p-4 bg-gray-50 min-h-full pb-24">
-                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 mb-4 mt-2">
-                    <h3 class="font-bold text-lg mb-4 border-b pb-2">สรุปการสั่งซื้อ</h3>
-                    <div class="flex justify-between text-sm mb-2">
-                        <span class="text-gray-600">ผู้รับจ้าง:</span>
-                        <span class="font-bold" id="pay-booster-name"></span>
+                <!-- Modal จำลองกรอก OTP -->
+                <div id="otp-section" class="hidden mt-6 p-4 bg-slate-800/80 border border-slate-700 rounded-2xl animate-fade-in">
+                    <p class="text-xs text-amber-400 mb-2 font-medium"><i class="fa-solid fa-circle-check"></i> ส่ง OTP จำลองไปที่เบอร์ของคุณแล้ว (รหัส: 1234)</p>
+                    <input type="text" id="otp-input" placeholder="กรอก OTP 4 หลัก" maxlength="4" class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-xl text-center tracking-widest text-lg text-white mb-3">
+                    <button onclick="verifyOTP()" class="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl text-sm">
+                        ยืนยันตัวตนเข้าสู่ระบบ
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. หน้าหลัก (Home / รายการประกาศ) -->
+            <div id="view-home" class="hidden p-5">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <p class="text-xs text-slate-400">ยินดีต้อนรับกลับ,</p>
+                        <h2 class="text-base font-bold text-white" id="user-phone-display">081-234-5678</h2>
                     </div>
-                    <div class="flex justify-between text-sm mb-2">
-                        <span class="text-gray-600">เกม:</span>
-                        <span class="font-bold" id="pay-game-name"></span>
-                    </div>
-                    <div class="flex justify-between text-sm mb-4">
-                        <span class="text-gray-600">รายการ:</span>
-                        <span class="font-bold text-right" id="pay-rank-detail"></span>
-                    </div>
-                    <div class="flex justify-between text-lg font-bold border-t pt-3">
-                        <span>ยอดชำระ:</span>
-                        <span class="text-indigo-600" id="pay-total-price"></span>
-                    </div>
+                    <button onclick="switchView('view-profile')" class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400">
+                        <i class="fa-solid fa-user"></i>
+                    </button>
                 </div>
 
-                <h3 class="font-bold text-gray-800 mb-3 px-1">ช่องทางการชำระเงิน (ระบบคนกลาง)</h3>
-                <div class="space-y-3">
-                    <label class="flex items-center p-4 bg-white border border-gray-200 rounded-xl cursor-pointer">
-                        <input type="radio" name="payment_method" checked class="w-5 h-5 text-indigo-600">
-                        <div class="ml-3 flex-1">
-                            <span class="block text-sm font-bold">Thai QR PromptPay</span>
-                            <span class="block text-xs text-gray-500">ฟรีค่าธรรมเนียม</span>
+                <!-- แบนเนอร์ระบบปลอดภัย -->
+                <div class="bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 p-4 rounded-2xl mb-6">
+                    <div class="flex items-start space-x-3">
+                        <i class="fa-solid fa-lock text-amber-400 text-lg mt-0.5"></i>
+                        <div>
+                            <h3 class="text-xs font-bold text-amber-300">ระบบ Escrow ป้องกันการโกง</h3>
+                            <p class="text-[11px] text-slate-300 mt-0.5">เงินของคุณจะถูกเก็บไว้ที่ระบบกลาง จนกว่านักปั๊มจะทำงานสำเร็จตามเรทที่เลือก</p>
                         </div>
-                        <i class="fas fa-qrcode text-xl text-gray-400"></i>
-                    </label>
-                    <label class="flex items-center p-4 bg-white border border-gray-200 rounded-xl cursor-pointer">
-                        <input type="radio" name="payment_method" class="w-5 h-5 text-indigo-600">
-                        <div class="ml-3 flex-1">
-                            <span class="block text-sm font-bold">บัตรเครดิต / เดบิต</span>
+                    </div>
+                </div>
+
+                <!-- เลือกเกม (หน้าโลโก้เลือกในแต่ละเกม) -->
+                <div class="mb-5">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">เลือกเกมที่ต้องการปั๊มแรงค์</h3>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div onclick="selectGame('ROV')" class="game-card bg-slate-800 border-2 border-amber-500 p-3 rounded-2xl text-center cursor-pointer transition">
+                            <div class="w-10 h-10 mx-auto bg-blue-600 rounded-xl flex items-center justify-center text-white mb-2 shadow">
+                                <i class="fa-solid fa-gamepad"></i>
+                            </div>
+                            <span class="text-xs font-bold text-white">ROV</span>
                         </div>
-                        <i class="fas fa-credit-card text-xl text-gray-400"></i>
-                    </label>
+                        <div onclick="selectGame('Valorant')" class="game-card bg-slate-800 border-2 border-slate-700 p-3 rounded-2xl text-center cursor-pointer transition">
+                            <div class="w-10 h-10 mx-auto bg-red-600 rounded-xl flex items-center justify-center text-white mb-2 shadow">
+                                <i class="fa-solid fa-crosshairs"></i>
+                            </div>
+                            <span class="text-xs font-bold text-white">Valorant</span>
+                        </div>
+                        <div onclick="selectGame('FreeFire')" class="game-card bg-slate-800 border-2 border-slate-700 p-3 rounded-2xl text-center cursor-pointer transition">
+                            <div class="w-10 h-10 mx-auto bg-amber-600 rounded-xl flex items-center justify-center text-white mb-2 shadow">
+                                <i class="fa-solid fa-fire"></i>
+                            </div>
+                            <span class="text-xs font-bold text-white">Free Fire</span>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="mt-4 text-xs text-gray-500 text-center bg-green-50 p-3 rounded-lg border border-green-100">
-                    <i class="fas fa-shield-alt text-green-500"></i> เงินของคุณจะถูกพักไว้ที่ระบบส่วนกลาง<br>จนกว่างานจะสำเร็จ ป้องกันการโกง 100%
+                <!-- เลือกเรทราคาและแรงค์ (ดรอปดาวน์เลือกแรงค์ต้นทาง-ปลายทาง) -->
+                <div class="bg-slate-800/60 border border-slate-700/80 p-4 rounded-2xl mb-6 space-y-3">
+                    <h3 class="text-xs font-bold text-amber-400"><i class="fa-solid fa-sliders"></i> กำหนดเรทราคาและยศที่ต้องการ</h3>
+                    
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1">แรงค์ปัจจุบัน</label>
+                            <select id="rank-from" class="w-full p-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500">
+                                <option value="Bronze">Bronze (บรอนซ์)</option>
+                                <option value="Silver">Silver (เงิน)</option>
+                                <option value="Gold">Gold (ทอง)</option>
+                                <option value="Platinum" selected>Platinum (แพลตตินัม)</option>
+                                <option value="Diamond">Diamond (เพชร)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1">แรงค์ที่ต้องการ</label>
+                            <select id="rank-to" class="w-full p-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500">
+                                <option value="Diamond">Diamond (เพชร)</option>
+                                <option value="Commander" selected>Commander (คอมมานเดอร์)</option>
+                                <option value="Conqueror">Conqueror (คอนเคอเรอร์)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- แสดงผลเรทราคาคำนวณอัตโนมัติ -->
+                    <div class="pt-2 border-t border-slate-700 flex justify-between items-center">
+                        <div>
+                            <span class="text-[10px] text-slate-400 block">เรทราคาประเมิน:</span>
+                            <span class="text-lg font-bold text-emerald-400" id="price-display">350 บาท</span>
+                        </div>
+                        <button onclick="proceedToPayment()" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition">
+                            เลือกรายการนี้เพื่อชำระเงิน <i class="fa-solid fa-arrow-right ml-1"></i>
+                        </button>
+                    </div>
                 </div>
 
-                <button onclick="confirmPayment()" class="mt-6 w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-indigo-700 transition">
-                    ยืนยันการชำระเงิน
+                <!-- รายการประกาศจากผู้เล่นคนอื่น (สำหรับคนหาคนรับปั๊มยาก / โพสหางาน) -->
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">ประกาศงานปั๊มแรงค์ล่าสุด</h3>
+                        <button onclick="openPostModal()" class="text-xs text-amber-400 hover:underline"><i class="fa-solid fa-plus"></i> ลงประกาศงาน</button>
+                    </div>
+                    <div id="job-list" class="space-y-3">
+                        <!-- รายการจำลอง -->
+                        <div class="bg-slate-800 border border-slate-700/80 p-3 rounded-xl flex justify-between items-center">
+                            <div>
+                                <span class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md font-medium">ROV</span>
+                                <h4 class="text-xs font-bold text-white mt-1">Diamond ➔ Commander</h4>
+                                <p class="text-[10px] text-slate-400">ผู้โพส: คุณเอ (ยืนยันตัวตนแล้ว)</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xs font-bold text-emerald-400 block">450 บ.</span>
+                                <button onclick="selectJobItem('ROV: Diamond -> Commander', 450)" class="mt-1 px-3 py-1 bg-slate-700 hover:bg-amber-500 hover:text-slate-950 text-white rounded-lg text-[10px] transition">รับงานนี้</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. หน้าชำระเงิน (ต้องเลือกรายการก่อนค่อยแสดงหน้าชำระเงินตามเงื่อนไข) -->
+            <div id="view-payment" class="hidden p-5">
+                <div class="flex items-center mb-4">
+                    <button onclick="switchView('view-home')" class="text-slate-400 hover:text-white mr-3"><i class="fa-solid fa-arrow-left"></i></button>
+                    <h2 class="text-sm font-bold text-white">ยืนยันและชำระเงิน (ระบบกลาง)</h2>
+                </div>
+
+                <div class="bg-slate-800 border border-slate-700 p-4 rounded-2xl mb-4 space-y-2">
+                    <h3 class="text-xs font-bold text-amber-400">สรุปรายละเอียดคำสั่งซื้อ</h3>
+                    <div class="flex justify-between text-xs text-slate-300">
+                        <span id="pay-item-title">ROV: Platinum -> Commander</span>
+                        <span id="pay-item-price" class="font-bold text-white">350 บาท</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 pt-2 border-t border-slate-700">*เงินจะถูกพักไว้ที่ระบบกลาง ป้องกันการเชิดเงินหนี มั่นใจได้ 100%</p>
+                </div>
+
+                <div class="space-y-3 mb-6">
+                    <label class="block text-xs font-medium text-slate-300">เลือกช่องทางชำระเงิน</label>
+                    <div class="p-3 bg-slate-800 border-2 border-amber-500 rounded-xl flex items-center justify-between cursor-pointer">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-qrcode text-amber-400 text-xl"></i>
+                            <div>
+                                <p class="text-xs font-bold text-white">PromptPay QR Code</p>
+                                <p class="text-[10px] text-slate-400">สแกนจ่ายผ่านแอปธนาคาร (ระบบกลาง)</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-circle-check text-amber-400"></i>
+                    </div>
+                </div>
+
+                <!-- จำลอง QR Code -->
+                <div class="bg-white p-4 rounded-2xl text-center mb-6">
+                    <div class="w-32 h-32 mx-auto bg-slate-900 rounded-xl flex items-center justify-center text-white text-xs mb-2">
+                        [ Mock PromptPay QR ]
+                    </div>
+                    <p class="text-xs text-slate-800 font-bold">ยอดที่ต้องชำระ: <span id="qr-price">350</span> บาท</p>
+                </div>
+
+                <button onclick="completePayment()" class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl text-xs shadow-lg shadow-emerald-500/20">
+                    จำลองการชำระเงินสำเร็จ
                 </button>
-            </section>
+            </div>
 
-            <!-- 7. View: Post Job -->
-            <section id="view-post" class="hidden view-section p-4 bg-white min-h-full pb-24">
-                <h2 class="text-2xl font-bold mb-1 mt-2">ลงประกาศรับงาน</h2>
-                <p class="text-sm text-gray-500 mb-6">สร้างรายได้จากการเล่นเกมที่คุณถนัด</p>
+            <!-- 4. หน้าโปรไฟล์ และ สถานะการยืนยันตัวตน -->
+            <div id="view-profile" class="hidden p-5">
+                <div class="flex items-center mb-6">
+                    <button onclick="switchView('view-home')" class="text-slate-400 hover:text-white mr-3"><i class="fa-solid fa-arrow-left"></i></button>
+                    <h2 class="text-sm font-bold text-white">โปรไฟล์ผู้ใช้งาน</h2>
+                </div>
 
-                <form onsubmit="submitPostJob(event)" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">เลือกเกม</label>
-                        <select required class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
-                            <option value="">-- เลือกเกม --</option>
-                            <option>ROV</option>
-                            <option>Valorant</option>
-                            <option>PUBG Mobile</option>
-                            <option>Free Fire</option>
-                        </select>
+                <div class="bg-slate-800 border border-slate-700 p-4 rounded-2xl text-center mb-6">
+                    <div class="w-16 h-16 mx-auto bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center text-2xl mb-3 border border-amber-500/40">
+                        <i class="fa-solid fa-user-shield"></i>
                     </div>
-                    
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">รายละเอียดบริการของคุณ</label>
-                        <textarea required rows="3" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="เช่น รับกดแรงค์กลางคืน ว่างตลอด..."></textarea>
-                    </div>
+                    <h3 class="text-sm font-bold text-white" id="profile-phone">081-234-5678</h3>
+                    <span class="inline-block mt-2 px-3 py-1 bg-emerald-500/20 text-emerald-400 rounded-full text-[10px] font-medium">
+                        <i class="fa-solid fa-circle-check"></i> ยืนยันตัวตนด้วยเบอร์โทร + OTP แล้ว
+                    </span>
+                </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">ราคาเริ่มต้น (บาท)</label>
-                            <input required type="number" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="เช่น 50">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">หน่วยราคา</label>
-                            <select class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg">
-                                <option>ต่อดาว</option>
-                                <option>ต่อแรงค์</option>
-                                <option>เหมาจบ</option>
-                            </select>
-                        </div>
+                <div class="space-y-3">
+                    <div class="bg-slate-800/60 border border-slate-700 p-3 rounded-xl flex justify-between items-center text-xs">
+                        <span class="text-slate-300">สถานะบัญชีปัจจุบัน</span>
+                        <span class="text-amber-400 font-medium">สมาชิบทั่วไป / ผู้ใช้บริการ</span>
                     </div>
-
-                    <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg shadow-md hover:bg-indigo-700 transition mt-6">
-                        ลงประกาศทันที
+                    <div class="bg-slate-800/60 border border-slate-700 p-3 rounded-xl flex justify-between items-center text-xs">
+                        <span class="text-slate-300">ประวัติการใช้บริการ</span>
+                        <span class="text-white font-medium">0 รายการ</span>
+                    </div>
+                    <button onclick="logout()" class="w-full py-3 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500 hover:text-white font-bold rounded-xl text-xs transition">
+                        ออกจากระบบ
                     </button>
-                </form>
-            </section>
-
-            <!-- 8. View: Profile -->
-            <section id="view-profile" class="hidden view-section p-4 bg-gray-50 min-h-full pb-24">
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col items-center mt-4">
-                    <div class="relative">
-                        <img src="https://ui-avatars.com/api/?name=User&background=4F46E5&color=fff" class="w-24 h-24 rounded-full mb-3 shadow">
-                        <div class="absolute bottom-3 right-0 bg-white rounded-full p-1 shadow">
-                            <i class="fas fa-check-circle text-blue-500 text-xl"></i>
-                        </div>
-                    </div>
-                    <h2 class="text-xl font-bold">User_<span id="profile-phone"></span></h2>
-                    <span class="bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full mt-2 font-bold">ยืนยันตัวตนสำเร็จ</span>
                 </div>
+            </div>
 
-                <div class="mt-6 space-y-2">
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-                        <div class="flex items-center"><i class="fas fa-history w-6 text-gray-400"></i> <span>ประวัติการจ้างงาน</span></div>
-                        <i class="fas fa-chevron-right text-gray-300"></i>
-                    </div>
-                    <div onclick="logout()" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer mt-4 text-red-500">
-                        <div class="flex items-center font-bold"><i class="fas fa-sign-out-alt w-6"></i> <span>ออกจากระบบ</span></div>
-                    </div>
-                </div>
-            </section>
+        </div>
 
-        </main>
+        <!-- แถบเมนูด้านล่างมือถือ (Navigation Bar) -->
+        <div class="bg-slate-900 border-t border-slate-800 py-3 px-6 flex justify-around items-center text-slate-400 text-xs z-50">
+            <button onclick="switchView('view-home')" class="flex flex-col items-center text-amber-400">
+                <i class="fa-solid fa-house text-base"></i>
+                <span class="text-[10px] mt-1">หน้าแรก</span>
+            </button>
+            <button onclick="switchView('view-home')" class="flex flex-col items-center hover:text-amber-400">
+                <i class="fa-solid fa-list-check text-base"></i>
+                <span class="text-[10px] mt-1">รายการ</span>
+            </button>
+            <button onclick="switchView('view-profile')" class="flex flex-col items-center hover:text-amber-400">
+                <i class="fa-solid fa-user-gear text-base"></i>
+                <span class="text-[10px] mt-1">โปรไฟล์</span>
+            </button>
+        </div>
 
-        <!-- Bottom Navigation Bar -->
-        <nav id="bottom-nav" class="hidden bg-white border-t border-gray-200 flex justify-around items-center p-2 pb-4 absolute bottom-0 w-full z-20">
-            <button onclick="navigate('view-home')" class="nav-btn flex flex-col items-center p-2 text-indigo-600 flex-1" data-target="view-home">
-                <i class="fas fa-home text-xl mb-1"></i>
-                <span class="text-[10px] font-bold">หน้าแรก</span>
-            </button>
-            <button onclick="navigate('view-post')" class="nav-btn flex flex-col items-center p-2 text-gray-400 flex-1" data-target="view-post">
-                <i class="fas fa-plus-circle text-xl mb-1"></i>
-                <span class="text-[10px] font-bold">ลงประกาศ</span>
-            </button>
-            <button onclick="navigate('view-profile')" class="nav-btn flex flex-col items-center p-2 text-gray-400 flex-1" data-target="view-profile">
-                <i class="fas fa-user text-xl mb-1"></i>
-                <span class="text-[10px] font-bold">โปรไฟล์</span>
-            </button>
-        </nav>
     </div>
 
-    <!-- JavaScript Logic -->
+    <!-- จาวาสคริปต์ควบคุมการทำงานระบบแบบ SPA และเงื่อนไขตรรกะทั้งหมด -->
     <script>
-        let appState = {
-            phoneNumber: '',
-            currentGame: '',
-            currentBooster: '',
-            priceCalculation: 0,
-            viewHistory: ['view-login']
-        };
+        // อัปเดตเวลาบน Status Bar มือถือแบบ Realtime
+        function updateTime() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('current-time').innerText = `${hours}:${minutes}`;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
 
-        function navigate(viewId) {
-            document.querySelectorAll('.view-section').forEach(el => {
-                el.classList.add('hidden');
-            });
-            const targetEl = document.getElementById(viewId);
-            if(targetEl) targetEl.classList.remove('hidden');
-            document.getElementById('main-content').scrollTop = 0;
+        let selectedGameName = 'ROV';
+        let currentSelectedPrice = 350;
+        let currentSelectedTitle = 'ROV: Platinum -> Commander';
 
-            const topHeader = document.getElementById('top-header');
-            const bottomNav = document.getElementById('bottom-nav');
-            const backBtn = document.getElementById('back-btn');
-            const headerTitle = document.getElementById('header-title');
+        // ระบบสลับหน้าจอ (Views)
+        function switchView(viewId) {
+            document.getElementById('view-auth').classList.add('hidden');
+            document.getElementById('view-home').classList.add('hidden');
+            document.getElementById('view-payment').classList.add('hidden');
+            document.getElementById('view-profile').classList.add('hidden');
 
-            if(viewId === 'view-login' || viewId === 'view-otp') {
-                topHeader.classList.add('hidden');
-                bottomNav.classList.add('hidden');
-            } else {
-                topHeader.classList.remove('hidden');
-                bottomNav.classList.remove('hidden');
-            }
-
-            backBtn.classList.remove('hidden');
-            switch(viewId) {
-                case 'view-home': 
-                    backBtn.classList.add('hidden'); 
-                    headerTitle.innerText = "บริการปั้มแรงค์";
-                    updateBottomNav('view-home');
-                    break;
-                case 'view-list': headerTitle.innerText = "เลือกผู้รับจ้าง"; break;
-                case 'view-detail': headerTitle.innerText = "รายละเอียดงาน"; break;
-                case 'view-payment': headerTitle.innerText = "ชำระเงิน"; break;
-                case 'view-post': 
-                    backBtn.classList.add('hidden');
-                    headerTitle.innerText = "ลงประกาศรับปั้ม"; 
-                    updateBottomNav('view-post');
-                    break;
-                case 'view-profile': 
-                    backBtn.classList.add('hidden');
-                    headerTitle.innerText = "โปรไฟล์ส่วนตัว"; 
-                    updateBottomNav('view-profile');
-                    break;
-            }
-
-            if(['view-home', 'view-post', 'view-profile', 'view-login'].includes(viewId)) {
-                appState.viewHistory = [viewId];
-            } else {
-                appState.viewHistory.push(viewId);
-            }
+            document.getElementById(viewId).classList.remove('hidden');
         }
 
-        function goBack() {
-            if(appState.viewHistory.length > 1) {
-                appState.viewHistory.pop();
-                const prevView = appState.viewHistory[appState.viewHistory.length - 1];
-                navigate(prevView);
-            } else {
-                navigate('view-home');
-            }
-        }
-
-        function updateBottomNav(activeId) {
-            document.querySelectorAll('.nav-btn').forEach(btn => {
-                if(btn.dataset.target === activeId) {
-                    btn.classList.replace('text-gray-400', 'text-indigo-600');
-                } else {
-                    btn.classList.replace('text-indigo-600', 'text-gray-400');
-                }
-            });
-        }
-
+        // ระบบขอ OTP (Mockup)
         function requestOTP() {
             const phone = document.getElementById('phone-input').value;
-            if(!phone || phone.length < 9) {
-                Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ถูกต้อง', text: 'กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง', confirmButtonColor: '#4F46E5' });
+            if(phone.length < 9) {
+                alert('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง');
                 return;
             }
-            appState.phoneNumber = phone;
-            document.getElementById('display-phone').innerText = phone;
-            
-            Swal.fire({
-                title: 'รหัส OTP ของคุณคือ',
-                text: '123456 (Mock OTP)',
-                icon: 'info',
-                confirmButtonText: 'ตกลง',
-                confirmButtonColor: '#4F46E5'
-            }).then(() => {
-                navigate('view-otp');
-            });
+            document.getElementById('otp-section').classList.remove('hidden');
         }
 
+        // ระบบยืนยัน OTP
         function verifyOTP() {
             const otp = document.getElementById('otp-input').value;
-            if(otp === '123456') {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'ยืนยันตัวตนสำเร็จ',
-                    text: 'เข้าสู่ระบบอย่างปลอดภัย',
-                    confirmButtonColor: '#4F46E5',
-                    timer: 1500,
-                    showConfirmButton: false
-                }).then(() => {
-                    document.getElementById('profile-phone').innerText = appState.phoneNumber.slice(-4);
-                    navigate('view-home');
-                });
+            if(otp === '1234') {
+                const phone = document.getElementById('phone-input').value;
+                document.getElementById('user-phone-display').innerText = `+66 ${phone}`;
+                document.getElementById('profile-phone').innerText = `+66 ${phone}`;
+                switchView('view-home');
             } else {
-                Swal.fire({ icon: 'error', title: 'รหัสผิดพลาด', text: 'กรุณากรอกรหัส 123456', confirmButtonColor: '#4F46E5' });
+                alert('รหัส OTP ไม่ถูกต้อง (ใช้รหัสจำลอง: 1234)');
             }
         }
 
-        function logout() {
-            Swal.fire({
-                title: 'ต้องการออกจากระบบ?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'ออกจากระบบ',
-                cancelButtonText: 'ยกเลิก'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    document.getElementById('phone-input').value = '';
-                    document.getElementById('otp-input').value = '';
-                    navigate('view-login');
-                }
-            });
-        }
-
-        function selectGame(gameName) {
-            appState.currentGame = gameName;
-            document.getElementById('selected-game-name').innerText = gameName;
-            navigate('view-list');
-        }
-
-        function viewBoosterDetail(boosterName) {
-            appState.currentBooster = boosterName;
-            document.getElementById('detail-name').innerHTML = `${boosterName} <i class="fas fa-check-circle text-blue-500"></i>`;
-            document.getElementById('detail-game-name').innerText = appState.currentGame;
+        // เลือกเกม
+        function selectGame(game) {
+            selectedGameName = game;
+            // สลับสไตล์ขอบการ์ดเกม
+            const cards = document.querySelectorAll('.game-card');
+            cards.forEach(card => card.classList.remove('border-amber-500'));
+            cards.forEach(card => card.classList.add('border-slate-700'));
+            event.currentTarget.classList.remove('border-slate-700');
+            event.currentTarget.classList.add('border-amber-500');
             
-            document.getElementById('rank-current').value = "";
-            document.getElementById('rank-desired').value = "";
-            calculatePrice();
+            updatePriceCalculation();
+        }
+
+        // คำนวณราคาตามยศที่เลือก
+        function updatePriceCalculation() {
+            const from = document.getElementById('rank-from').value;
+            const to = document.getElementById('rank-to').value;
             
-            navigate('view-detail');
+            // สูตรคำนวณจำลองเรตราคา
+            let basePrice = 350;
+            if(to === 'Commander') basePrice = 500;
+            if(to === 'Conqueror') basePrice = 900;
+
+            currentSelectedPrice = basePrice;
+            currentSelectedTitle = `${selectedGameName}: ${from} -> ${to}`;
+            document.getElementById('price-display').innerText = `${basePrice} บาท`;
         }
 
-        function calculatePrice() {
-            const current = parseInt(document.getElementById('rank-current').value);
-            const desired = parseInt(document.getElementById('rank-desired').value);
-            const btn = document.getElementById('btn-proceed-pay');
-            const priceDisplay = document.getElementById('total-price');
+        document.getElementById('rank-from').addEventListener('change', updatePriceCalculation);
+        document.getElementById('rank-to').addEventListener('change', updatePriceCalculation);
 
-            if(current && desired) {
-                if(current >= desired) {
-                    Swal.fire({ icon: 'warning', title: 'เลือกไม่ถูกต้อง', text: 'แรงค์เป้าหมายต้องสูงกว่าแรงค์ปัจจุบัน', confirmButtonColor: '#4F46E5' });
-                    document.getElementById('rank-desired').value = "";
-                    resetPriceState(btn, priceDisplay);
-                    return;
-                }
-                
-                const diff = desired - current;
-                appState.priceCalculation = diff * 300;
-                
-                priceDisplay.innerText = `฿ ${appState.priceCalculation.toFixed(2)}`;
-                
-                btn.disabled = false;
-                btn.innerHTML = 'ดำเนินการชำระเงิน <i class="fas fa-arrow-right ml-2"></i>';
-                btn.classList.remove('bg-gray-300', 'text-gray-500');
-                btn.classList.add('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
-            } else {
-                resetPriceState(btn, priceDisplay);
-            }
-        }
-
-        function resetPriceState(btn, priceDisplay) {
-            appState.priceCalculation = 0;
-            priceDisplay.innerText = "฿ 0.00";
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-lock mr-2"></i> เลือกรายการก่อนชำระเงิน';
-            btn.classList.remove('bg-indigo-600', 'text-white', 'hover:bg-indigo-700');
-            btn.classList.add('bg-gray-300', 'text-gray-500');
-        }
-
+        // เงื่อนไขบังคับ: "ต้องเลือกรายการก่อนค่อยแสดงหน้าชำระเงิน"
         function proceedToPayment() {
-            document.getElementById('pay-booster-name').innerText = appState.currentBooster;
-            document.getElementById('pay-game-name').innerText = appState.currentGame;
+            document.getElementById('pay-item-title').innerText = currentSelectedTitle;
+            document.getElementById('pay-item-price').innerText = `${currentSelectedPrice} บาท`;
+            document.getElementById('qr-price').innerText = currentSelectedPrice;
             
-            const currentEl = document.getElementById('rank-current');
-            const desiredEl = document.getElementById('rank-desired');
-            const currentText = currentEl.options[currentEl.selectedIndex].text;
-            const desiredText = desiredEl.options[desiredEl.selectedIndex].text;
-            document.getElementById('pay-rank-detail').innerText = `${currentText} ➔ ${desiredText}`;
-            
-            document.getElementById('pay-total-price').innerText = `฿ ${appState.priceCalculation.toFixed(2)}`;
-            
-            navigate('view-payment');
+            // เปลี่ยนไปหน้าชำระเงิน
+            switchView('view-payment');
         }
 
-        function confirmPayment() {
-            Swal.fire({
-                icon: 'success',
-                title: 'ชำระเงินสำเร็จ!',
-                text: 'เงินถูกพักไว้ในระบบคนกลางเรียบร้อยแล้ว กรุณารอผู้รับจ้างติดต่อกลับ',
-                confirmButtonColor: '#4F46E5'
-            }).then(() => {
-                navigate('view-home');
-            });
+        // เลือกจากรายการประกาศงานคนอื่น
+        function selectJobItem(title, price) {
+            currentSelectedTitle = title;
+            currentSelectedPrice = price;
+            proceedToPayment();
         }
 
-        function submitPostJob(event) {
-            event.preventDefault();
-            Swal.fire({
-                icon: 'success',
-                title: 'ลงประกาศสำเร็จ',
-                text: 'ประกาศของคุณแสดงผลในระบบเรียบร้อยแล้ว',
-                confirmButtonColor: '#4F46E5'
-            }).then(() => {
-                navigate('view-home');
-            });
+        // ลงประกาศงานใหม่ (สำหรับคนหาคนรับปั๊มยาก)
+        function openPostModal() {
+            const jobTitle = prompt("กรอกรายละเอียดงาน (เช่น Valorant: Silver -> Gold):");
+            const price = prompt("ระบุเรทราคาค่าจ้าง (บาท):");
+            if(jobTitle && price) {
+                const jobList = document.getElementById('job-list');
+                const newCard = document.createElement('div');
+                newCard.className = "bg-slate-800 border border-slate-700/80 p-3 rounded-xl flex justify-between items-center";
+                newCard.innerHTML = `
+                    <div>
+                        <span class="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-md font-medium">ประกาศใหม่</span>
+                        <h4 class="text-xs font-bold text-white mt-1">${jobTitle}</h4>
+                        <p class="text-[10px] text-slate-400">ผู้โพส: คุณ (ยืนยันตัวตนแล้ว)</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs font-bold text-emerald-400 block">${price} บ.</span>
+                        <button onclick="selectJobItem('${jobTitle}', ${price})" class="mt-1 px-3 py-1 bg-slate-700 hover:bg-amber-500 hover:text-slate-950 text-white rounded-lg text-[10px] transition">รับงานนี้</button>
+                    </div>
+                `;
+                jobList.prepend(newCard);
+                alert('ลงประกาศสำเร็จ! นักปั๊มจะเห็นประกาศของคุณในระบบทันที');
+            }
         }
 
-        // เริ่มต้นเปิดหน้าแรกด้วยหน้า Login
-        navigate('view-login');
+        // จำลองชำระเงินสำเร็จ
+        function completePayment() {
+            alert('ชำระเงินเข้าสู่ระบบกลาง (Escrow) สำเร็จ! ระบบได้ส่งแจ้งเตือนไปยังผู้รับปั๊มแรงค์แล้ว');
+            switchView('view-home');
+        }
+
+        // ออกจากระบบ
+        function logout() {
+            document.getElementById('otp-section').classList.add('hidden');
+            document.getElementById('phone-input').value = '';
+            document.getElementById('otp-input').value = '';
+            switchView('view-auth');
+        }
     </script>
 </body>
 </html>

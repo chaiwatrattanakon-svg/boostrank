@@ -1121,19 +1121,111 @@
 
             </div>
 
+            <!-- CHAT -->
+
+            <div id="accept-step-chat" class="hidden space-y-3">
+
+                <div class="bg-blue-500/5 border border-blue-500/10 p-3 rounded-xl">
+                    <p class="text-[10px] text-slate-300 leading-relaxed">
+                        <i class="fa-solid fa-comments text-blue-400 mr-1"></i>
+                        คุยรายละเอียดกับผู้ว่าจ้างและขอไอดีเกมก่อนเริ่มปั๊มแรงค์
+                    </p>
+                </div>
+
+                <div class="glass rounded-2xl overflow-hidden flex flex-col" style="height: 360px;">
+
+                    <div class="px-4 py-3 border-b border-slate-700/60 flex items-center justify-between">
+
+                        <div class="flex items-center gap-2">
+
+                            <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-amber-400">
+                                <i class="fa-solid fa-user text-xs"></i>
+                            </div>
+
+                            <div>
+                                <p id="chat-poster-name" class="text-xs font-bold text-white">
+                                    -
+                                </p>
+
+                                <p class="text-[9px] text-emerald-400">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1"></span>
+                                    ออนไลน์
+                                </p>
+                            </div>
+
+                        </div>
+
+                        <span
+                            id="chat-gameid-badge"
+                            class="hidden text-[9px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <i class="fa-solid fa-key mr-1"></i>
+                            ได้ไอดีแล้ว
+                        </span>
+
+                    </div>
+
+                    <div id="chat-messages" class="flex-1 overflow-y-auto px-3 py-3 space-y-3"></div>
+
+                    <div class="px-3 pb-2">
+                        <button
+                            onclick="requestGameId()"
+                            class="w-full text-[10px] py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold">
+                            <i class="fa-solid fa-gamepad mr-1"></i>
+                            ขอรายละเอียดไอดีเกม
+                        </button>
+                    </div>
+
+                    <div class="px-3 pb-3 flex items-center gap-2 border-t border-slate-700/60 pt-2">
+
+                        <input
+                            id="chat-input"
+                            type="text"
+                            placeholder="พิมพ์ข้อความ..."
+                            onkeydown="if(event.key==='Enter'){ sendChatMessage(); }"
+                            class="dark-input flex-1 px-3 py-2 rounded-xl text-xs text-white focus:outline-none">
+
+                        <button
+                            onclick="sendChatMessage()"
+                            class="w-9 h-9 shrink-0 rounded-xl btn-gold text-slate-950 flex items-center justify-center">
+                            <i class="fa-solid fa-paper-plane text-xs"></i>
+                        </button>
+
+                    </div>
+
+                </div>
+
+                <button
+                    onclick="goToEvidenceStep()"
+                    class="btn-success w-full py-3.5 text-slate-950 font-bold rounded-xl text-sm">
+                    <i class="fa-solid fa-arrow-right mr-2"></i>
+                    ดำเนินงานต่อ / ส่งหลักฐาน
+                </button>
+
+            </div>
+
             <!-- EVIDENCE -->
 
             <div id="accept-step-evidence" class="hidden space-y-3">
 
-                <div
-                    class="bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-xl text-[10px] text-slate-300">
+                <div class="flex items-center justify-between">
 
-                    <i class="fa-solid fa-building-columns text-emerald-400 mr-1"></i>
-                    บัญชีรับเงิน:
-                    <span
-                        id="accept-bank-summary"
-                        class="text-white font-medium">
-                    </span>
+                    <div
+                        class="bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-xl text-[10px] text-slate-300 flex-1 mr-2">
+
+                        <i class="fa-solid fa-building-columns text-emerald-400 mr-1"></i>
+                        บัญชีรับเงิน:
+                        <span
+                            id="accept-bank-summary"
+                            class="text-white font-medium">
+                        </span>
+
+                    </div>
+
+                    <button
+                        onclick="backToChatFromEvidence()"
+                        class="shrink-0 w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 text-amber-400">
+                        <i class="fa-solid fa-comments text-xs"></i>
+                    </button>
 
                 </div>
 
@@ -2360,7 +2452,15 @@
             .classList.remove('hidden');
 
         document
+            .getElementById('accept-step-chat')
+            .classList.add('hidden');
+
+        document
             .getElementById('accept-step-evidence')
+            .classList.add('hidden');
+
+        document
+            .getElementById('chat-gameid-badge')
             .classList.add('hidden');
 
 
@@ -2445,9 +2545,250 @@
             .getElementById('accept-step-bank')
             .classList.add('hidden');
 
+        openChatStep();
+
+    }
+
+
+    /* =========================
+       CHAT
+    ========================= */
+
+    let jobChats = {};
+
+    function getChatTime() {
+
+        const now = new Date();
+
+        return (
+            now.getHours().toString().padStart(2, '0') +
+            ':' +
+            now.getMinutes().toString().padStart(2, '0')
+        );
+
+    }
+
+    function getJobChat(jobId) {
+
+        if (!jobChats[jobId]) {
+
+            jobChats[jobId] = {
+
+                gameIdReceived: false,
+
+                messages: [
+                    {
+                        sender: 'client',
+                        text: 'สวัสดีครับ ฝากงานปั๊มแรงค์ด้วยนะครับ พร้อมเริ่มได้เลย',
+                        time: getChatTime()
+                    }
+                ]
+
+            };
+
+        }
+
+        return jobChats[jobId];
+
+    }
+
+    function openChatStep() {
+
+        if (!acceptedJob) return;
+
+        document
+            .getElementById('chat-poster-name')
+            .innerText = acceptedJob.poster;
+
+        const chat = getJobChat(acceptedJob.id);
+
+        document
+            .getElementById('chat-gameid-badge')
+            .classList.toggle('hidden', !chat.gameIdReceived);
+
+        document
+            .getElementById('accept-step-evidence')
+            .classList.add('hidden');
+
+        document
+            .getElementById('accept-step-chat')
+            .classList.remove('hidden');
+
+        renderChatMessages();
+
+    }
+
+    function renderChatMessages() {
+
+        if (!acceptedJob) return;
+
+        const chat = getJobChat(acceptedJob.id);
+        const box = document.getElementById('chat-messages');
+
+        box.innerHTML = chat.messages.map(m => {
+
+            const isMe = m.sender === 'me';
+
+            if (m.type === 'id-request') {
+
+                return `
+                    <div class="max-w-[85%] ${isMe ? 'ml-auto' : 'mr-auto'}">
+                        <div class="bg-slate-800/80 border border-amber-500/20 rounded-2xl p-3">
+                            <p class="text-[9px] text-amber-400 font-bold mb-1">
+                                <i class="fa-solid fa-gamepad mr-1"></i>
+                                ขอรายละเอียดไอดีเกม
+                            </p>
+                            <p class="text-[10px] text-slate-300 leading-relaxed">
+                                ${m.text}
+                            </p>
+                        </div>
+                        <p class="text-[8px] text-slate-500 mt-1 ${isMe ? 'text-right' : ''}">
+                            ${m.time}
+                        </p>
+                    </div>
+                `;
+
+            }
+
+            if (m.type === 'id-info') {
+
+                return `
+                    <div class="max-w-[85%] ${isMe ? 'ml-auto' : 'mr-auto'}">
+                        <div class="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-3 space-y-1">
+                            <p class="text-[9px] text-emerald-400 font-bold mb-1">
+                                <i class="fa-solid fa-key mr-1"></i>
+                                ข้อมูลไอดีเกม
+                            </p>
+                            <p class="text-[10px] text-slate-200">
+                                Username: ${m.gameId.username}
+                            </p>
+                            <p class="text-[10px] text-slate-200">
+                                Password: ${m.gameId.password}
+                            </p>
+                            <p class="text-[9px] text-slate-500 mt-1">
+                                โปรดใช้เพื่อปั๊มแรงค์ตามงานนี้เท่านั้น
+                            </p>
+                        </div>
+                        <p class="text-[8px] text-slate-500 mt-1 ${isMe ? 'text-right' : ''}">
+                            ${m.time}
+                        </p>
+                    </div>
+                `;
+
+            }
+
+            const bubbleClass = isMe
+                ? 'bg-amber-500 text-slate-950 ml-auto'
+                : 'bg-slate-800 text-white mr-auto';
+
+            return `
+                <div class="max-w-[75%] ${isMe ? 'ml-auto' : 'mr-auto'}">
+                    <div class="${bubbleClass} rounded-2xl px-3 py-2 text-[11px] leading-relaxed">
+                        ${m.text}
+                    </div>
+                    <p class="text-[8px] text-slate-500 mt-1 ${isMe ? 'text-right' : ''}">
+                        ${m.time}
+                    </p>
+                </div>
+            `;
+
+        }).join('');
+
+        box.scrollTop = box.scrollHeight;
+
+    }
+
+    function sendChatMessage() {
+
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+
+        if (!text || !acceptedJob) return;
+
+        const chat = getJobChat(acceptedJob.id);
+
+        chat.messages.push({
+            sender: 'me',
+            text,
+            time: getChatTime()
+        });
+
+        input.value = '';
+
+        renderChatMessages();
+
+        setTimeout(() => {
+
+            chat.messages.push({
+                sender: 'client',
+                text: 'รับทราบครับ ขอบคุณที่แจ้ง',
+                time: getChatTime()
+            });
+
+            renderChatMessages();
+
+        }, 900);
+
+    }
+
+    function requestGameId() {
+
+        if (!acceptedJob) return;
+
+        const chat = getJobChat(acceptedJob.id);
+
+        chat.messages.push({
+            sender: 'me',
+            type: 'id-request',
+            text: 'รบกวนขอไอดีเกม (Username / Password) เพื่อเริ่มปั๊มแรงค์ให้นะครับ',
+            time: getChatTime()
+        });
+
+        renderChatMessages();
+
+        if (!chat.gameIdReceived) {
+
+            setTimeout(() => {
+
+                chat.gameIdReceived = true;
+
+                chat.messages.push({
+                    sender: 'client',
+                    type: 'id-info',
+                    gameId: {
+                        username: 'player_' + acceptedJob.id + '_2026',
+                        password: 'TempPass' + acceptedJob.id + '!'
+                    },
+                    time: getChatTime()
+                });
+
+                renderChatMessages();
+
+                document
+                    .getElementById('chat-gameid-badge')
+                    .classList.remove('hidden');
+
+            }, 1200);
+
+        }
+
+    }
+
+    function goToEvidenceStep() {
+
+        document
+            .getElementById('accept-step-chat')
+            .classList.add('hidden');
+
         document
             .getElementById('accept-step-evidence')
             .classList.remove('hidden');
+
+    }
+
+    function backToChatFromEvidence() {
+
+        openChatStep();
 
     }
 

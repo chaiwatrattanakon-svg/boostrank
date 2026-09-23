@@ -3011,6 +3011,1119 @@
 
     }
 
+
+    /* ============================================================
+       SYSTEM CHECKLIST EXTENSION
+       เพิ่มความสามารถโดยคงโครงสร้างเดิมของ RankBoost Pro
+       1. ผู้ใช้และสิทธิ์
+       2. จัดการข้อมูล
+       3. ธุรกรรมหลัก / Order ID
+       4. การคำนวณอัตโนมัติ
+       5. การติดตามสถานะ
+       6. การแจ้งเตือน
+       7. Dashboard และรายงาน
+       ============================================================ */
+
+    (function initSystemChecklistExtension() {
+
+        /* =========================
+           EXTENSION STYLE
+        ========================= */
+
+        const extensionStyle = document.createElement('style');
+        extensionStyle.innerHTML = `
+            .system-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                padding: 4px 8px;
+                border-radius: 999px;
+                font-size: 9px;
+                font-weight: 700;
+                border: 1px solid rgba(255,255,255,.08);
+            }
+
+            .system-status.waiting {
+                background: rgba(245,158,11,.10);
+                color: #fbbf24;
+                border-color: rgba(245,158,11,.18);
+            }
+
+            .system-status.progress {
+                background: rgba(59,130,246,.10);
+                color: #60a5fa;
+                border-color: rgba(59,130,246,.18);
+            }
+
+            .system-status.review {
+                background: rgba(168,85,247,.10);
+                color: #c084fc;
+                border-color: rgba(168,85,247,.18);
+            }
+
+            .system-status.success {
+                background: rgba(16,185,129,.10);
+                color: #34d399;
+                border-color: rgba(16,185,129,.18);
+            }
+
+            .system-status.danger {
+                background: rgba(239,68,68,.10);
+                color: #f87171;
+                border-color: rgba(239,68,68,.18);
+            }
+
+            .dashboard-stat {
+                background: linear-gradient(145deg, rgba(30,41,59,.88), rgba(15,23,42,.78));
+                border: 1px solid rgba(255,255,255,.06);
+                box-shadow: 0 8px 22px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.025);
+            }
+
+            .notification-dot {
+                position: absolute;
+                top: -3px;
+                right: -3px;
+                min-width: 15px;
+                height: 15px;
+                padding: 0 4px;
+                border-radius: 999px;
+                background: #ef4444;
+                color: white;
+                font-size: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 2px solid #020617;
+            }
+
+            .system-progress {
+                height: 6px;
+                border-radius: 999px;
+                background: rgba(51,65,85,.65);
+                overflow: hidden;
+            }
+
+            .system-progress > div {
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #fbbf24, #f59e0b);
+            }
+
+            .role-chip {
+                cursor: pointer;
+                transition: .2s ease;
+            }
+
+            .role-chip.active {
+                border-color: rgba(245,158,11,.45) !important;
+                background: rgba(245,158,11,.12) !important;
+                color: #fbbf24 !important;
+            }
+        `;
+        document.head.appendChild(extensionStyle);
+
+
+        /* =========================
+           DATA STORAGE
+        ========================= */
+
+        const STORAGE_KEYS = {
+            users: 'rankboost_users_v2',
+            orders: 'rankboost_orders_v2',
+            notifications: 'rankboost_notifications_v2',
+            history: 'rankboost_history_v2',
+            currentUser: 'rankboost_current_user_v2'
+        };
+
+        const safeParse = (key, fallback) => {
+            try {
+                const value = localStorage.getItem(key);
+                return value ? JSON.parse(value) : fallback;
+            } catch (error) {
+                return fallback;
+            }
+        };
+
+        const saveData = (key, value) => {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (error) {
+                /* Prototype mode: continue working even if storage is unavailable */
+            }
+        };
+
+        let systemUsers = safeParse(STORAGE_KEYS.users, []);
+        let systemOrders = safeParse(STORAGE_KEYS.orders, []);
+        let systemNotifications = safeParse(STORAGE_KEYS.notifications, []);
+        let systemHistory = safeParse(STORAGE_KEYS.history, []);
+        let currentSystemUser = safeParse(STORAGE_KEYS.currentUser, null);
+
+        if (!Array.isArray(systemUsers)) systemUsers = [];
+        if (!Array.isArray(systemOrders)) systemOrders = [];
+        if (!Array.isArray(systemNotifications)) systemNotifications = [];
+        if (!Array.isArray(systemHistory)) systemHistory = [];
+
+        let systemOrderCounter = systemOrders.length + 1;
+
+
+        /* =========================
+           USER / ROLE
+        ========================= */
+
+        function makeUserId() {
+            return 'U' + String(Date.now()).slice(-8);
+        }
+
+        function makeOrderId() {
+            const now = new Date();
+            const stamp =
+                now.getFullYear().toString() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0');
+
+            return 'RB-' + stamp + '-' + String(systemOrderCounter++).padStart(4, '0');
+        }
+
+        function getCurrentUserName() {
+            return currentSystemUser && currentSystemUser.name
+                ? currentSystemUser.name
+                : 'ผู้ใช้งาน RankBoost';
+        }
+
+        function getCurrentUserRole() {
+            return currentSystemUser && currentSystemUser.role
+                ? currentSystemUser.role
+                : 'customer';
+        }
+
+        function roleLabel(role) {
+            const labels = {
+                customer: 'ลูกค้า',
+                booster: 'นักปั๊มแรงค์',
+                admin: 'ผู้ดูแลระบบ'
+            };
+            return labels[role] || 'สมาชิกทั่วไป';
+        }
+
+        function setCurrentUser(user) {
+            currentSystemUser = user;
+            saveData(STORAGE_KEYS.currentUser, currentSystemUser);
+            applyCurrentUserToUI();
+        }
+
+        function applyCurrentUserToUI() {
+            if (!currentSystemUser) return;
+
+            const phone = currentSystemUser.phone || '';
+            const name = currentSystemUser.name || 'ผู้ใช้งาน RankBoost';
+            const role = currentSystemUser.role || 'customer';
+
+            const phoneDisplay = document.getElementById('user-phone-display');
+            const profilePhone = document.getElementById('profile-phone');
+            const profileName = document.getElementById('profile-name');
+
+            if (phoneDisplay) phoneDisplay.innerText = `+66 ${phone}`;
+            if (profilePhone) profilePhone.innerText = `+66 ${phone}`;
+            if (profileName) profileName.innerText = name;
+
+            const roleDisplay = document.getElementById('profile-role-display');
+            if (roleDisplay) roleDisplay.innerText = roleLabel(role);
+
+            const dashboardRole = document.getElementById('dashboard-role-display');
+            if (dashboardRole) dashboardRole.innerText = roleLabel(role);
+        }
+
+
+        /* =========================
+           ORDER / STATUS
+        ========================= */
+
+        const ORDER_STATUS = {
+            PAYMENT: 'รอชำระเงิน',
+            WAITING: 'รอรับงาน',
+            ACCEPTED: 'รับงานแล้ว',
+            PROGRESS: 'กำลังดำเนินการ',
+            REVIEW: 'รอตรวจสอบหลักฐาน',
+            SUCCESS: 'เสร็จสิ้น',
+            EDIT: 'ต้องแก้ไข',
+            CANCELLED: 'ยกเลิก'
+        };
+
+        function statusClass(status) {
+            if (status === ORDER_STATUS.SUCCESS) return 'success';
+            if (status === ORDER_STATUS.PROGRESS || status === ORDER_STATUS.ACCEPTED) return 'progress';
+            if (status === ORDER_STATUS.REVIEW || status === ORDER_STATUS.EDIT) return 'review';
+            if (status === ORDER_STATUS.CANCELLED) return 'danger';
+            return 'waiting';
+        }
+
+        function statusHTML(status) {
+            const icons = {
+                'รอชำระเงิน': 'fa-credit-card',
+                'รอรับงาน': 'fa-hourglass-half',
+                'รับงานแล้ว': 'fa-handshake',
+                'กำลังดำเนินการ': 'fa-spinner',
+                'รอตรวจสอบหลักฐาน': 'fa-magnifying-glass',
+                'เสร็จสิ้น': 'fa-circle-check',
+                'ต้องแก้ไข': 'fa-rotate-left',
+                'ยกเลิก': 'fa-circle-xmark'
+            };
+
+            return `<span class="system-status ${statusClass(status)}">
+                <i class="fa-solid ${icons[status] || 'fa-circle-info'}"></i>
+                ${status}
+            </span>`;
+        }
+
+        function createOrderFromJob(job, status) {
+            if (!job) return null;
+
+            const existing = systemOrders.find(o => o.jobId === job.id);
+            if (existing) return existing;
+
+            const order = {
+                id: makeOrderId(),
+                jobId: job.id,
+                customerId: currentSystemUser ? currentSystemUser.id : 'GUEST',
+                customerName: currentSystemUser ? getCurrentUserName() : 'คุณ',
+                boosterId: null,
+                boosterName: null,
+                game: job.game,
+                title: job.title,
+                price: Number(job.price) || 0,
+                fee: 0,
+                discount: 0,
+                netAmount: Number(job.price) || 0,
+                status: status || ORDER_STATUS.WAITING,
+                evidence: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            systemOrders.push(order);
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            return order;
+        }
+
+        function updateOrderStatus(jobId, status, extra = {}) {
+            let order = systemOrders.find(o => o.jobId === jobId);
+
+            if (!order) {
+                const job = jobPostings.find(j => j.id === jobId);
+                if (job) order = createOrderFromJob(job, status);
+            }
+
+            if (!order) return null;
+
+            order.status = status;
+            order.updatedAt = new Date().toISOString();
+            Object.assign(order, extra);
+
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            return order;
+        }
+
+
+        /* =========================
+           NOTIFICATION
+        ========================= */
+
+        function addNotification(title, message, type = 'info') {
+            const notification = {
+                id: 'N' + Date.now() + Math.floor(Math.random() * 1000),
+                title,
+                message,
+                type,
+                read: false,
+                createdAt: new Date().toISOString()
+            };
+
+            systemNotifications.unshift(notification);
+            systemNotifications = systemNotifications.slice(0, 50);
+            saveData(STORAGE_KEYS.notifications, systemNotifications);
+            updateNotificationBadge();
+        }
+
+        function unreadNotifications() {
+            return systemNotifications.filter(n => !n.read);
+        }
+
+        function updateNotificationBadge() {
+            const badge = document.getElementById('notification-badge');
+            if (!badge) return;
+
+            const count = unreadNotifications().length;
+            badge.innerText = count > 99 ? '99+' : count;
+            badge.classList.toggle('hidden', count === 0);
+
+            const navBadge = document.getElementById('notification-nav-badge');
+            if (navBadge) {
+                navBadge.innerText = count > 99 ? '99+' : count;
+                navBadge.classList.toggle('hidden', count === 0);
+            }
+        }
+
+        function renderNotifications() {
+            const box = document.getElementById('notification-list');
+            if (!box) return;
+
+            if (systemNotifications.length === 0) {
+                box.innerHTML = `
+                    <div class="text-center py-10 text-slate-500 text-xs">
+                        <i class="fa-regular fa-bell-slash text-2xl mb-2 block"></i>
+                        ยังไม่มีการแจ้งเตือน
+                    </div>
+                `;
+                return;
+            }
+
+            box.innerHTML = systemNotifications.map(n => `
+                <div class="glass p-3 rounded-xl ${n.read ? 'opacity-60' : 'gold-glow'}">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 shrink-0 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                            <i class="fa-solid ${n.type === 'success' ? 'fa-circle-check' : n.type === 'warning' ? 'fa-triangle-exclamation' : 'fa-bell'}"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-[10px] font-bold text-white">${n.title}</p>
+                            <p class="text-[9px] text-slate-400 mt-1 leading-relaxed">${n.message}</p>
+                            <p class="text-[8px] text-slate-600 mt-1">${formatDateTime(n.createdAt)}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function markNotificationsRead() {
+            systemNotifications.forEach(n => n.read = true);
+            saveData(STORAGE_KEYS.notifications, systemNotifications);
+            updateNotificationBadge();
+        }
+
+
+        /* =========================
+           HISTORY / REPORT
+        ========================= */
+
+        function formatDateTime(value) {
+            if (!value) return '-';
+            const d = new Date(value);
+            if (isNaN(d.getTime())) return '-';
+            return d.toLocaleString('th-TH', {
+                dateStyle: 'short',
+                timeStyle: 'short'
+            });
+        }
+
+        function syncHistoryFromOrders() {
+            systemHistory = systemOrders.map(order => ({
+                id: order.id,
+                title: order.title,
+                game: order.game,
+                price: order.price,
+                status: order.status,
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt
+            }));
+
+            saveData(STORAGE_KEYS.history, systemHistory);
+        }
+
+        function renderHistory() {
+            const box = document.getElementById('history-list');
+            if (!box) return;
+
+            syncHistoryFromOrders();
+
+            if (systemHistory.length === 0) {
+                box.innerHTML = `
+                    <div class="text-center py-10 text-slate-500 text-xs">
+                        <i class="fa-solid fa-clock-rotate-left text-2xl mb-2 block"></i>
+                        ยังไม่มีประวัติรายการ
+                    </div>
+                `;
+                return;
+            }
+
+            box.innerHTML = systemHistory.slice().reverse().map(order => `
+                <div class="job-card p-4 rounded-2xl">
+                    <div class="flex justify-between items-start gap-3">
+                        <div class="min-w-0">
+                            <p class="text-[8px] text-amber-400 font-bold">${order.id}</p>
+                            <h4 class="text-xs font-bold text-white mt-1">${order.title}</h4>
+                            <p class="text-[9px] text-slate-500 mt-1">${order.game} • ${formatDateTime(order.createdAt)}</p>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <p class="text-sm font-extrabold text-emerald-400">${order.price} <span class="text-[8px]">บาท</span></p>
+                            <div class="mt-2">${statusHTML(order.status)}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+
+        /* =========================
+           DASHBOARD
+        ========================= */
+
+        function calculateDashboard() {
+            const total = systemOrders.length;
+            const completed = systemOrders.filter(o => o.status === ORDER_STATUS.SUCCESS).length;
+            const active = systemOrders.filter(o => [
+                ORDER_STATUS.WAITING,
+                ORDER_STATUS.ACCEPTED,
+                ORDER_STATUS.PROGRESS,
+                ORDER_STATUS.REVIEW,
+                ORDER_STATUS.EDIT
+            ].includes(o.status)).length;
+            const cancelled = systemOrders.filter(o => o.status === ORDER_STATUS.CANCELLED).length;
+            const revenue = systemOrders
+                .filter(o => o.status === ORDER_STATUS.SUCCESS)
+                .reduce((sum, o) => sum + Number(o.price || 0), 0);
+
+            return {
+                total,
+                completed,
+                active,
+                cancelled,
+                revenue,
+                successRate: total ? Math.round((completed / total) * 100) : 0
+            };
+        }
+
+        function renderDashboard() {
+            const data = calculateDashboard();
+
+            const set = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = value;
+            };
+
+            set('dashboard-total', data.total);
+            set('dashboard-completed', data.completed);
+            set('dashboard-active', data.active);
+            set('dashboard-cancelled', data.cancelled);
+            set('dashboard-revenue', data.revenue.toLocaleString('th-TH') + ' บาท');
+            set('dashboard-success-rate', data.successRate + '%');
+
+            const progress = document.getElementById('dashboard-progress');
+            if (progress) progress.style.width = data.successRate + '%';
+
+            const role = getCurrentUserRole();
+            const adminPanel = document.getElementById('admin-dashboard-panel');
+            if (adminPanel) adminPanel.classList.toggle('hidden', role !== 'admin');
+        }
+
+
+        /* =========================
+           EXTENDED VIEWS
+        ========================= */
+
+        function createSystemViews() {
+            const screen = document.querySelector('.screen-content');
+            if (!screen) return;
+
+            if (!document.getElementById('view-dashboard')) {
+                screen.insertAdjacentHTML('beforeend', `
+                    <div id="view-dashboard" class="hidden p-5">
+                        <div class="flex justify-between items-center mb-5">
+                            <div>
+                                <p class="text-[9px] text-amber-400 uppercase tracking-widest">Dashboard</p>
+                                <h2 class="text-base font-bold text-white mt-1">ภาพรวมระบบ</h2>
+                            </div>
+                            <button onclick="switchView('view-notifications'); markNotificationsRead(); renderNotifications();" class="relative w-10 h-10 rounded-xl bg-slate-800 text-amber-400">
+                                <i class="fa-solid fa-bell"></i>
+                                <span id="notification-badge" class="notification-dot hidden">0</span>
+                            </button>
+                        </div>
+
+                        <div class="glass p-4 rounded-2xl mb-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-[9px] text-slate-500 uppercase tracking-widest">Account Role</p>
+                                    <p id="dashboard-role-display" class="text-sm font-bold text-white mt-1">ลูกค้า</p>
+                                </div>
+                                <span class="px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] text-emerald-400">
+                                    <i class="fa-solid fa-circle-check mr-1"></i>Active
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 mb-4">
+                            <div class="dashboard-stat p-4 rounded-2xl">
+                                <p class="text-[9px] text-slate-500">งานทั้งหมด</p>
+                                <p id="dashboard-total" class="text-2xl font-extrabold text-white mt-1">0</p>
+                            </div>
+                            <div class="dashboard-stat p-4 rounded-2xl">
+                                <p class="text-[9px] text-slate-500">งานสำเร็จ</p>
+                                <p id="dashboard-completed" class="text-2xl font-extrabold text-emerald-400 mt-1">0</p>
+                            </div>
+                            <div class="dashboard-stat p-4 rounded-2xl">
+                                <p class="text-[9px] text-slate-500">กำลังดำเนินการ</p>
+                                <p id="dashboard-active" class="text-2xl font-extrabold text-blue-400 mt-1">0</p>
+                            </div>
+                            <div class="dashboard-stat p-4 rounded-2xl">
+                                <p class="text-[9px] text-slate-500">ยกเลิก</p>
+                                <p id="dashboard-cancelled" class="text-2xl font-extrabold text-red-400 mt-1">0</p>
+                            </div>
+                        </div>
+
+                        <div class="glass p-4 rounded-2xl mb-4">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-[10px] text-slate-300">อัตราความสำเร็จ</span>
+                                <span id="dashboard-success-rate" class="text-[10px] font-bold text-emerald-400">0%</span>
+                            </div>
+                            <div class="system-progress">
+                                <div id="dashboard-progress" style="width:0%"></div>
+                            </div>
+                        </div>
+
+                        <div class="glass p-4 rounded-2xl mb-4">
+                            <p class="text-[9px] text-slate-500 uppercase tracking-widest">รายได้จากงานที่สำเร็จ</p>
+                            <p id="dashboard-revenue" class="text-xl font-extrabold text-emerald-400 mt-1">0 บาท</p>
+                        </div>
+
+                        <div id="admin-dashboard-panel" class="glass p-4 rounded-2xl">
+                            <div class="flex items-center justify-between mb-3">
+                                <div>
+                                    <p class="text-[9px] text-amber-400 uppercase">Admin</p>
+                                    <h3 class="text-xs font-bold text-white">จัดการรายการล่าสุด</h3>
+                                </div>
+                                <button onclick="refreshSystemData()" class="text-[9px] text-amber-400">
+                                    <i class="fa-solid fa-rotate mr-1"></i>รีเฟรช
+                                </button>
+                            </div>
+                            <div id="admin-order-list" class="space-y-2"></div>
+                        </div>
+                    </div>
+
+                    <div id="view-notifications" class="hidden p-5">
+                        <div class="flex items-center mb-5">
+                            <button onclick="switchView('view-dashboard')" class="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 mr-3">
+                                <i class="fa-solid fa-arrow-left"></i>
+                            </button>
+                            <div>
+                                <p class="text-[9px] text-amber-400 uppercase">Notification Center</p>
+                                <h2 class="text-sm font-bold text-white">การแจ้งเตือน</h2>
+                            </div>
+                        </div>
+                        <div class="space-y-3" id="notification-list"></div>
+                    </div>
+
+                    <div id="view-history" class="hidden p-5">
+                        <div class="flex items-center mb-5">
+                            <button onclick="switchView('view-profile')" class="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 mr-3">
+                                <i class="fa-solid fa-arrow-left"></i>
+                            </button>
+                            <div>
+                                <p class="text-[9px] text-amber-400 uppercase">Order History</p>
+                                <h2 class="text-sm font-bold text-white">ประวัติรายการ</h2>
+                            </div>
+                        </div>
+                        <div id="history-list" class="space-y-3"></div>
+                    </div>
+                `);
+            }
+        }
+
+
+        /* =========================
+           ADD ROLE SELECTOR
+        ========================= */
+
+        function createRoleSelector() {
+            const terms = document.getElementById('register-terms');
+            if (!terms || document.getElementById('register-role')) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.id = 'register-role';
+            wrapper.innerHTML = `
+                <label class="block text-xs font-medium text-slate-300 mb-2">
+                    ประเภทผู้ใช้งาน
+                </label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" data-role="customer" class="role-chip active px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-[10px] text-slate-300">
+                        <i class="fa-solid fa-user mr-1"></i> ลูกค้า
+                    </button>
+                    <button type="button" data-role="booster" class="role-chip px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-[10px] text-slate-300">
+                        <i class="fa-solid fa-gamepad mr-1"></i> นักปั๊มแรงค์
+                    </button>
+                </div>
+                <p class="text-[8px] text-slate-600 mt-1">ผู้ดูแลระบบต้องกำหนดสิทธิ์จากฝั่งผู้ดูแล ไม่ควรเปิดให้สมัครเองในระบบจริง</p>
+            `;
+
+            terms.closest('label').before(wrapper);
+
+            wrapper.querySelectorAll('[data-role]').forEach(button => {
+                button.addEventListener('click', () => {
+                    wrapper.querySelectorAll('[data-role]').forEach(b => b.classList.remove('active'));
+                    button.classList.add('active');
+                    wrapper.dataset.selectedRole = button.dataset.role;
+                });
+            });
+
+            wrapper.dataset.selectedRole = 'customer';
+        }
+
+
+        /* =========================
+           ADMIN ORDER CONTROLS
+        ========================= */
+
+        function renderAdminOrders() {
+            const box = document.getElementById('admin-order-list');
+            if (!box) return;
+
+            if (systemOrders.length === 0) {
+                box.innerHTML = `<p class="text-[9px] text-slate-500">ยังไม่มีคำสั่งซื้อในระบบ</p>`;
+                return;
+            }
+
+            box.innerHTML = systemOrders.slice().reverse().slice(0, 10).map(order => `
+                <div class="bg-slate-950/40 border border-slate-700/60 p-3 rounded-xl">
+                    <div class="flex justify-between gap-2">
+                        <div class="min-w-0">
+                            <p class="text-[8px] text-amber-400">${order.id}</p>
+                            <p class="text-[10px] font-bold text-white truncate mt-1">${order.title}</p>
+                        </div>
+                        <p class="text-[10px] text-emerald-400 font-bold">${order.price} บาท</p>
+                    </div>
+                    <div class="flex justify-between items-center mt-2 gap-2">
+                        ${statusHTML(order.status)}
+                        <select onchange="changeOrderStatus('${order.id}', this.value)" class="dark-input text-[8px] rounded-lg px-2 py-1 text-white">
+                            ${Object.values(ORDER_STATUS).map(status => `<option value="${status}" ${status === order.status ? 'selected' : ''}>${status}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.changeOrderStatus = function(orderId, status) {
+            const order = systemOrders.find(o => o.id === orderId);
+            if (!order) return;
+
+            order.status = status;
+            order.updatedAt = new Date().toISOString();
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            syncHistoryFromOrders();
+
+            addNotification(
+                'อัปเดตสถานะคำสั่งซื้อ',
+                `${order.id} เปลี่ยนสถานะเป็น ${status}`,
+                status === ORDER_STATUS.SUCCESS ? 'success' : 'info'
+            );
+
+            refreshSystemData();
+        };
+
+
+        /* =========================
+           REFRESH SYSTEM DATA
+        ========================= */
+
+        window.refreshSystemData = function() {
+            renderDashboard();
+            renderAdminOrders();
+            renderNotifications();
+            renderHistory();
+            updateNotificationBadge();
+            updateProfileCounters();
+            renderJobList();
+        };
+
+
+        /* =========================
+           EXTEND EXISTING VIEW
+        ========================= */
+
+        const originalSwitchView = window.switchView;
+
+        window.switchView = function(viewId) {
+            const views = [
+                'view-auth',
+                'view-home',
+                'view-list',
+                'view-accept-job',
+                'view-payment',
+                'view-profile',
+                'view-dashboard',
+                'view-notifications',
+                'view-history'
+            ];
+
+            views.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+
+            const target = document.getElementById(viewId);
+            if (target) target.classList.remove('hidden');
+
+            const bottomNav = document.getElementById('bottom-nav');
+            if (bottomNav) {
+                if (viewId === 'view-auth') {
+                    bottomNav.classList.add('hidden');
+                    bottomNav.classList.remove('flex');
+                } else {
+                    bottomNav.classList.remove('hidden');
+                    bottomNav.classList.add('flex');
+                }
+            }
+
+            ['nav-home', 'nav-list', 'nav-profile', 'nav-dashboard'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.classList.remove('text-amber-400');
+            });
+
+            const navMap = {
+                'view-home': 'nav-home',
+                'view-list': 'nav-list',
+                'view-profile': 'nav-profile',
+                'view-dashboard': 'nav-dashboard'
+            };
+
+            if (navMap[viewId]) {
+                const btn = document.getElementById(navMap[viewId]);
+                if (btn) btn.classList.add('text-amber-400');
+            }
+
+            if (viewId === 'view-list') {
+                populateFilterRankOptions(document.getElementById('filter-game').value);
+                renderJobList();
+            }
+
+            if (viewId === 'view-dashboard') {
+                renderDashboard();
+                renderAdminOrders();
+            }
+
+            if (viewId === 'view-notifications') {
+                renderNotifications();
+                updateNotificationBadge();
+            }
+
+            if (viewId === 'view-history') {
+                renderHistory();
+            }
+
+            applyCurrentUserToUI();
+        };
+
+
+        /* =========================
+           EXTEND BOTTOM NAV
+        ========================= */
+
+        function createBottomNavItems() {
+            const nav = document.getElementById('bottom-nav');
+            if (!nav || document.getElementById('nav-dashboard')) return;
+
+            const dashboardButton = document.createElement('button');
+            dashboardButton.id = 'nav-dashboard';
+            dashboardButton.className = 'flex flex-col items-center hover:text-amber-400';
+            dashboardButton.innerHTML = `
+                <i class="fa-solid fa-chart-line text-base"></i>
+                <span class="text-[9px] mt-1">Dashboard</span>
+            `;
+            dashboardButton.onclick = () => window.switchView('view-dashboard');
+            nav.appendChild(dashboardButton);
+
+            const notificationButton = document.createElement('button');
+            notificationButton.id = 'nav-notifications';
+            notificationButton.className = 'relative flex flex-col items-center hover:text-amber-400';
+            notificationButton.innerHTML = `
+                <i class="fa-solid fa-bell text-base"></i>
+                <span class="text-[9px] mt-1">แจ้งเตือน</span>
+                <span id="notification-nav-badge" class="notification-dot hidden">0</span>
+            `;
+            notificationButton.onclick = () => {
+                window.switchView('view-notifications');
+                markNotificationsRead();
+                renderNotifications();
+            };
+            nav.appendChild(notificationButton);
+
+            const oldUpdate = updateNotificationBadge;
+            window.updateNotificationBadge = function() {
+                oldUpdate();
+                const badge = document.getElementById('notification-nav-badge');
+                if (!badge) return;
+                const count = unreadNotifications().length;
+                badge.innerText = count > 99 ? '99+' : count;
+                badge.classList.toggle('hidden', count === 0);
+            };
+        }
+
+
+        /* =========================
+           WRAP EXISTING AUTH
+        ========================= */
+
+        const originalVerifyOTP = window.verifyOTP;
+        window.verifyOTP = function() {
+            const phone = document.getElementById('phone-input').value.trim();
+
+            if (document.getElementById('otp-input').value === '1234') {
+                let user = systemUsers.find(u => u.phone === phone);
+
+                if (!user) {
+                    user = {
+                        id: makeUserId(),
+                        name: 'ผู้ใช้งาน RankBoost',
+                        phone,
+                        role: 'customer',
+                        status: 'active',
+                        createdAt: new Date().toISOString()
+                    };
+                    systemUsers.push(user);
+                    saveData(STORAGE_KEYS.users, systemUsers);
+                }
+
+                setCurrentUser(user);
+            }
+
+            originalVerifyOTP();
+        };
+
+        const originalRegisterUser = window.registerUser;
+        window.registerUser = function() {
+            originalRegisterUser();
+        };
+
+        const originalVerifyRegisterOTP = window.verifyRegisterOTP;
+        window.verifyRegisterOTP = function() {
+            const otp = document.getElementById('register-otp-input').value;
+
+            if (otp === '1234') {
+                const roleBox = document.getElementById('register-role');
+                const selectedRole = roleBox ? (roleBox.dataset.selectedRole || 'customer') : 'customer';
+
+                const existing = systemUsers.find(u => u.phone === pendingRegisterPhone);
+                const user = existing || {
+                    id: makeUserId(),
+                    name: pendingRegisterName,
+                    phone: pendingRegisterPhone,
+                    role: selectedRole,
+                    status: 'active',
+                    createdAt: new Date().toISOString()
+                };
+
+                user.name = pendingRegisterName;
+                user.role = selectedRole;
+
+                if (!existing) systemUsers.push(user);
+                saveData(STORAGE_KEYS.users, systemUsers);
+                setCurrentUser(user);
+            }
+
+            originalVerifyRegisterOTP();
+        };
+
+
+        /* =========================
+           WRAP PAYMENT / JOB FLOW
+        ========================= */
+
+        const originalCompletePayment = window.completePayment;
+        window.completePayment = function() {
+            originalCompletePayment();
+
+            const latestJob = jobPostings[jobPostings.length - 1];
+            if (latestJob) {
+                const order = createOrderFromJob(latestJob, ORDER_STATUS.WAITING);
+                if (order) {
+                    order.fee = Math.round(order.price * 0.05);
+                    order.netAmount = order.price + order.fee - order.discount;
+                    saveData(STORAGE_KEYS.orders, systemOrders);
+                    syncHistoryFromOrders();
+
+                    addNotification(
+                        'สร้างคำสั่งซื้อสำเร็จ',
+                        `${order.id} เข้าสู่ตลาดงานแล้ว สถานะ: ${order.status}`,
+                        'success'
+                    );
+                }
+            }
+
+            refreshSystemData();
+        };
+
+        const originalAcceptJob = window.acceptJob;
+        window.acceptJob = function(jobId) {
+            originalAcceptJob(jobId);
+
+            const job = jobPostings.find(j => j.id === jobId);
+            if (!job) return;
+
+            const order = createOrderFromJob(job, ORDER_STATUS.ACCEPTED);
+            if (order) {
+                order.boosterId = currentSystemUser ? currentSystemUser.id : 'DEMO-BOOSTER';
+                order.boosterName = getCurrentUserName();
+                order.status = ORDER_STATUS.ACCEPTED;
+                order.updatedAt = new Date().toISOString();
+                saveData(STORAGE_KEYS.orders, systemOrders);
+                syncHistoryFromOrders();
+
+                addNotification(
+                    'รับงานสำเร็จ',
+                    `${order.id} เปลี่ยนสถานะเป็น ${ORDER_STATUS.ACCEPTED}`,
+                    'success'
+                );
+            }
+
+            refreshSystemData();
+        };
+
+        const originalConfirmBankInfo = window.confirmBankInfo;
+        window.confirmBankInfo = function() {
+            const beforeJob = acceptedJob;
+            originalConfirmBankInfo();
+
+            if (beforeJob) {
+                updateOrderStatus(beforeJob.id, ORDER_STATUS.PROGRESS, {
+                    boosterId: currentSystemUser ? currentSystemUser.id : 'DEMO-BOOSTER',
+                    boosterName: getCurrentUserName()
+                });
+                addNotification(
+                    'เริ่มดำเนินงาน',
+                    `${beforeJob.title} อยู่ในสถานะ ${ORDER_STATUS.PROGRESS}`,
+                    'info'
+                );
+                refreshSystemData();
+            }
+        };
+
+        const originalGoToEvidenceStep = window.goToEvidenceStep;
+        window.goToEvidenceStep = function() {
+            const jobId = acceptedJob ? acceptedJob.id : null;
+            originalGoToEvidenceStep();
+
+            if (jobId) {
+                updateOrderStatus(jobId, ORDER_STATUS.REVIEW);
+                addNotification(
+                    'ส่งงานเพื่อตรวจสอบ',
+                    `รายการงานถูกส่งเข้าสู่ขั้นตอนตรวจสอบหลักฐานแล้ว`,
+                    'info'
+                );
+                refreshSystemData();
+            }
+        };
+
+        const originalSubmitEvidenceAndComplete = window.submitEvidenceAndComplete;
+        window.submitEvidenceAndComplete = function() {
+            const jobId = acceptedJob ? acceptedJob.id : null;
+            originalSubmitEvidenceAndComplete();
+
+            if (jobId) {
+                const order = updateOrderStatus(jobId, ORDER_STATUS.SUCCESS, {
+                    evidence: 'แนบหลักฐานแล้ว'
+                });
+
+                if (order) {
+                    addNotification(
+                        'งานเสร็จสิ้น',
+                        `${order.id} ตรวจสอบหลักฐานแล้วและเปลี่ยนสถานะเป็น ${ORDER_STATUS.SUCCESS}`,
+                        'success'
+                    );
+                }
+
+                refreshSystemData();
+            }
+        };
+
+
+        /* =========================
+           PROFILE ENHANCEMENT
+        ========================= */
+
+        function enhanceProfile() {
+            const profileView = document.getElementById('view-profile');
+            if (!profileView || document.getElementById('profile-role-display')) return;
+
+            const space = profileView.querySelector('.space-y-3');
+            if (!space) return;
+
+            const roleCard = document.createElement('div');
+            roleCard.className = 'glass p-4 rounded-xl flex justify-between items-center';
+            roleCard.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-user-tag text-amber-400"></i>
+                    <span class="text-xs text-slate-300">สิทธิ์ผู้ใช้งาน</span>
+                </div>
+                <span id="profile-role-display" class="text-[10px] text-amber-400">สมาชิกทั่วไป</span>
+            `;
+
+            space.insertBefore(roleCard, space.lastElementChild);
+
+            const historyCard = Array.from(space.children).find(el =>
+                el.innerText && el.innerText.includes('ประวัติบริการ')
+            );
+
+            if (historyCard) {
+                historyCard.style.cursor = 'pointer';
+                historyCard.onclick = () => window.switchView('view-history');
+                const value = historyCard.querySelector('span.text-[10px].text-white');
+                if (value) value.id = 'profile-history-count';
+            }
+
+            const notificationCard = document.createElement('div');
+            notificationCard.className = 'glass p-4 rounded-xl flex justify-between items-center cursor-pointer';
+            notificationCard.onclick = () => {
+                window.switchView('view-notifications');
+                markNotificationsRead();
+                renderNotifications();
+            };
+            notificationCard.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-bell text-blue-400"></i>
+                    <span class="text-xs text-slate-300">การแจ้งเตือน</span>
+                </div>
+                <span id="profile-notification-count" class="text-[10px] text-blue-400">0 รายการใหม่</span>
+            `;
+
+            space.insertBefore(notificationCard, space.lastElementChild);
+        }
+
+        function updateProfileCounters() {
+            const historyCount = document.getElementById('profile-history-count');
+            if (historyCount) historyCount.innerText = systemOrders.length + ' รายการ';
+
+            const notificationCount = document.getElementById('profile-notification-count');
+            if (notificationCount) notificationCount.innerText = unreadNotifications().length + ' รายการใหม่';
+        }
+
+
+        /* =========================
+           INITIALIZATION
+        ========================= */
+
+        createSystemViews();
+        createRoleSelector();
+        createBottomNavItems();
+        enhanceProfile();
+
+        if (currentSystemUser) {
+            applyCurrentUserToUI();
+        }
+
+        updateNotificationBadge();
+        renderNotifications();
+        renderHistory();
+        renderDashboard();
+        renderAdminOrders();
+        updateProfileCounters();
+
+        /* ตัวอย่างข้อมูลแจ้งเตือนครั้งแรกสำหรับ Prototype */
+        if (systemNotifications.length === 0) {
+            addNotification(
+                'ยินดีต้อนรับสู่ RankBoost Pro',
+                'ระบบได้เปิดใช้งานการติดตามสถานะและการแจ้งเตือนแล้ว',
+                'info'
+            );
+        }
+
+    })();
+
 </script>
 
 </body>

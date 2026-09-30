@@ -3739,25 +3739,30 @@
         const originalSwitchView = window.switchView;
 
         window.switchView = function(viewId) {
-            const views = [
-                'view-auth',
-                'view-home',
-                'view-list',
-                'view-accept-job',
-                'view-payment',
-                'view-profile',
-                'view-dashboard',
-                'view-notifications',
-                'view-history'
-            ];
-
-            views.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.classList.add('hidden');
-            });
+            /*
+             * FIX: เดิมรายการ views ระบุไม่ครบ ทำให้เมื่อเปิดหน้าใหม่ เช่น
+             * view-order-report / view-order-detail / view-admin-users /
+             * view-advanced-report หน้าเดิมยังไม่ถูกซ่อน จึงเกิดอาการ
+             * "เปลี่ยนหน้าแล้วหน้าเดิมยังโชว์อยู่"
+             *
+             * แก้โดยซ่อนทุกหน้าหลักที่อยู่โดยตรงภายใน .screen-content
+             * ทุกครั้งก่อนแสดงหน้าที่ผู้ใช้เลือก วิธีนี้ทำให้เมื่อมีการ
+             * เพิ่มหน้าใหม่ในอนาคตไม่ต้องมาเพิ่ม ID ใน array ซ้ำอีก
+             */
+            const screen = document.querySelector('.screen-content');
+            if (screen) {
+                screen.querySelectorAll(':scope > [id^="view-"]').forEach(view => {
+                    view.classList.add('hidden');
+                });
+            }
 
             const target = document.getElementById(viewId);
-            if (target) target.classList.remove('hidden');
+            if (!target) {
+                console.warn('ไม่พบหน้าที่ต้องการเปิด:', viewId);
+                return;
+            }
+
+            target.classList.remove('hidden');
 
             const bottomNav = document.getElementById('bottom-nav');
             if (bottomNav) {
@@ -4092,6 +4097,1397 @@
             if (notificationCount) notificationCount.innerText = unreadNotifications().length + ' รายการใหม่';
         }
 
+
+
+        /* ============================================================
+           SYSTEM CHECKLIST PRO UPGRADE
+           เพิ่มความสมบูรณ์จาก Prototype โดยไม่ลบ/เปลี่ยนโครงสร้างเดิม
+           - Permission / Role enforcement
+           - CRUD ผู้ใช้งานสำหรับ Admin
+           - Order Timeline / Audit Log
+           - Payment Record
+           - Dashboard Report / Charts / Filters
+           - Order Search / Detail
+           - Notification แยกตามผู้ใช้
+           - Validation และ File Upload Guard
+           ============================================================ */
+
+        const PRO_STORAGE_KEYS = {
+            audit: 'rankboost_audit_v2',
+            payments: 'rankboost_payments_v2',
+            orderTimeline: 'rankboost_order_timeline_v2'
+        };
+
+        let systemAudit = safeParse(PRO_STORAGE_KEYS.audit, []);
+        let systemPayments = safeParse(PRO_STORAGE_KEYS.payments, []);
+        let systemOrderTimeline = safeParse(PRO_STORAGE_KEYS.orderTimeline, {});
+
+        if (!Array.isArray(systemAudit)) systemAudit = [];
+        if (!Array.isArray(systemPayments)) systemPayments = [];
+        if (!systemOrderTimeline || typeof systemOrderTimeline !== 'object') systemOrderTimeline = {};
+
+        const SYSTEM_PERMISSIONS = {
+            customer: [
+                'view_dashboard',
+                'create_order',
+                'view_own_orders',
+                'cancel_own_order'
+            ],
+            booster: [
+                'view_dashboard',
+                'view_own_orders',
+                'accept_job',
+                'submit_evidence'
+            ],
+            admin: ['*']
+        };
+
+        function getCurrentUserId() {
+            return currentSystemUser && currentSystemUser.id
+                ? currentSystemUser.id
+                : 'GUEST';
+        }
+
+        function hasPermission(permission) {
+            const role = getCurrentUserRole();
+            const permissions = SYSTEM_PERMISSIONS[role] || [];
+            return permissions.includes('*') || permissions.includes(permission);
+        }
+
+        function escapeHTML(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function saveProData() {
+            saveData(PRO_STORAGE_KEYS.audit, systemAudit);
+            saveData(PRO_STORAGE_KEYS.payments, systemPayments);
+            saveData(PRO_STORAGE_KEYS.orderTimeline, systemOrderTimeline);
+        }
+
+        function addAuditLog(action, targetType, targetId, detail = '') {
+            systemAudit.unshift({
+                id: 'A' + Date.now() + Math.floor(Math.random() * 1000),
+                actorId: getCurrentUserId(),
+                actorName: getCurrentUserName(),
+                actorRole: getCurrentUserRole(),
+                action,
+                targetType,
+                targetId,
+                detail,
+                createdAt: new Date().toISOString()
+            });
+            systemAudit = systemAudit.slice(0, 300);
+            saveData(PRO_STORAGE_KEYS.audit, systemAudit);
+        }
+
+        function addOrderTimeline(order, status, note = '') {
+            if (!order) return;
+
+            if (!Array.isArray(order.timeline)) order.timeline = [];
+
+            const last = order.timeline[order.timeline.length - 1];
+            if (last && last.status === status && last.note === note) {
+                return;
+            }
+
+            const item = {
+                status,
+                note: note || `สถานะเปลี่ยนเป็น ${status}`,
+                actorId: getCurrentUserId(),
+                actorName: getCurrentUserName(),
+                actorRole: getCurrentUserRole(),
+                createdAt: new Date().toISOString()
+            };
+
+            order.timeline.push(item);
+            systemOrderTimeline[order.id] = order.timeline;
+            saveProData();
+        }
+
+        function migrateSystemData() {
+            systemUsers = systemUsers.map(user => ({
+                status: 'active',
+                ...user
+            }));
+
+            systemOrders = systemOrders.map(order => {
+                if (!Array.isArray(order.timeline)) {
+                    order.timeline = [];
+                }
+
+                if (order.timeline.length === 0) {
+                    order.timeline.push({
+                        status: order.status || ORDER_STATUS.WAITING,
+                        note: 'สร้างรายการคำสั่งซื้อ',
+                        actorId: order.customerId || 'SYSTEM',
+                        actorName: order.customerName || 'ระบบ',
+                        actorRole: 'system',
+                        createdAt: order.createdAt || new Date().toISOString()
+                    });
+                }
+
+                if (!order.payment) {
+                    order.payment = {
+                        status: order.status === ORDER_STATUS.PAYMENT ? 'pending' : 'paid',
+                        method: 'PromptPay QR',
+                        amount: Number(order.netAmount || order.price || 0),
+                        verified: order.status !== ORDER_STATUS.PAYMENT,
+                        verifiedAt: order.status === ORDER_STATUS.PAYMENT ? null : order.createdAt
+                    };
+                }
+
+                systemOrderTimeline[order.id] = order.timeline;
+                return order;
+            });
+
+            systemPayments.forEach(payment => {
+                if (!payment.status) payment.status = 'paid';
+            });
+
+            saveData(STORAGE_KEYS.users, systemUsers);
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            saveProData();
+        }
+
+        migrateSystemData();
+
+        /* =========================
+           NOTIFICATION PER USER
+        ========================= */
+
+        const legacyAddNotification = addNotification;
+        addNotification = function(title, message, type = 'info', userId = null, orderId = null) {
+            const notification = {
+                id: 'N' + Date.now() + Math.floor(Math.random() * 1000),
+                title,
+                message,
+                type,
+                userId,
+                orderId,
+                read: false,
+                createdAt: new Date().toISOString()
+            };
+
+            systemNotifications.unshift(notification);
+            systemNotifications = systemNotifications.slice(0, 100);
+            saveData(STORAGE_KEYS.notifications, systemNotifications);
+            updateNotificationBadge();
+        };
+
+        function visibleNotifications() {
+            const uid = getCurrentUserId();
+            return systemNotifications.filter(n => !n.userId || n.userId === uid);
+        }
+
+        unreadNotifications = function() {
+            return visibleNotifications().filter(n => !n.read);
+        };
+
+        renderNotifications = function() {
+            const box = document.getElementById('notification-list');
+            if (!box) return;
+
+            const notifications = visibleNotifications();
+
+            if (notifications.length === 0) {
+                box.innerHTML = `
+                    <div class="text-center py-10 text-slate-500 text-xs">
+                        <i class="fa-regular fa-bell-slash text-2xl mb-2 block"></i>
+                        ยังไม่มีการแจ้งเตือน
+                    </div>
+                `;
+                return;
+            }
+
+            box.innerHTML = notifications.map(n => `
+                <div class="glass p-3 rounded-xl ${n.read ? 'opacity-60' : 'gold-glow'}">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 shrink-0 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                            <i class="fa-solid ${n.type === 'success' ? 'fa-circle-check' : n.type === 'warning' ? 'fa-triangle-exclamation' : 'fa-bell'}"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-[10px] font-bold text-white">${escapeHTML(n.title)}</p>
+                            <p class="text-[9px] text-slate-400 mt-1 leading-relaxed">${escapeHTML(n.message)}</p>
+                            <p class="text-[8px] text-slate-600 mt-1">${formatDateTime(n.createdAt)}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        };
+
+        markNotificationsRead = function() {
+            const uid = getCurrentUserId();
+            systemNotifications.forEach(n => {
+                if (!n.userId || n.userId === uid) n.read = true;
+            });
+            saveData(STORAGE_KEYS.notifications, systemNotifications);
+            updateNotificationBadge();
+        };
+
+        /* =========================
+           ORDER / PAYMENT UPGRADE
+        ========================= */
+
+        const legacyCreateOrderFromJob = createOrderFromJob;
+        createOrderFromJob = function(job, status) {
+            const order = legacyCreateOrderFromJob(job, status);
+            if (!order) return order;
+
+            if (!Array.isArray(order.timeline)) order.timeline = [];
+            if (!order.timeline.length) {
+                addOrderTimeline(order, order.status, 'สร้างคำสั่งซื้อ');
+            }
+
+            if (!order.payment) {
+                order.payment = {
+                    status: order.status === ORDER_STATUS.PAYMENT ? 'pending' : 'paid',
+                    method: 'PromptPay QR',
+                    amount: Number(order.netAmount || order.price || 0),
+                    verified: order.status !== ORDER_STATUS.PAYMENT,
+                    verifiedAt: order.status === ORDER_STATUS.PAYMENT ? null : new Date().toISOString()
+                };
+            }
+
+            order.netAmount = Number(order.price || 0) + Number(order.fee || 0) - Number(order.discount || 0);
+            systemOrderTimeline[order.id] = order.timeline;
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            saveProData();
+            return order;
+        };
+
+        const legacyUpdateOrderStatus = updateOrderStatus;
+        updateOrderStatus = function(jobId, status, extra = {}) {
+            const orderBefore = systemOrders.find(o => o.jobId === jobId);
+            const oldStatus = orderBefore ? orderBefore.status : null;
+            const order = legacyUpdateOrderStatus(jobId, status, extra);
+            if (!order) return null;
+
+            if (!Array.isArray(order.timeline)) order.timeline = [];
+            if (oldStatus !== status) {
+                addOrderTimeline(order, status, extra.note || `เปลี่ยนสถานะจาก ${oldStatus || '-'} เป็น ${status}`);
+                addAuditLog('UPDATE_STATUS', 'ORDER', order.id, `${oldStatus || '-'} -> ${status}`);
+            }
+
+            if (order.customerId && order.customerId !== getCurrentUserId()) {
+                addNotification(
+                    'อัปเดตสถานะคำสั่งซื้อ',
+                    `${order.id} เปลี่ยนสถานะเป็น ${status}`,
+                    status === ORDER_STATUS.SUCCESS ? 'success' : 'info',
+                    order.customerId,
+                    order.id
+                );
+            }
+
+            if (order.boosterId && order.boosterId !== getCurrentUserId()) {
+                addNotification(
+                    'อัปเดตสถานะงาน',
+                    `${order.id} เปลี่ยนสถานะเป็น ${status}`,
+                    status === ORDER_STATUS.SUCCESS ? 'success' : 'info',
+                    order.boosterId,
+                    order.id
+                );
+            }
+
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            saveProData();
+            return order;
+        };
+
+        function getVisibleOrders() {
+            const role = getCurrentUserRole();
+            const uid = getCurrentUserId();
+
+            if (role === 'admin') return systemOrders.slice();
+            if (role === 'booster') return systemOrders.filter(o => o.boosterId === uid);
+            return systemOrders.filter(o => o.customerId === uid);
+        }
+
+        function createPaymentRecord(order, status = 'paid') {
+            if (!order) return null;
+
+            const existing = systemPayments.find(p => p.orderId === order.id);
+            if (existing) return existing;
+
+            const payment = {
+                id: 'PAY-' + Date.now(),
+                orderId: order.id,
+                customerId: order.customerId,
+                method: 'PromptPay QR',
+                amount: Number(order.netAmount || order.price || 0),
+                status,
+                verified: status === 'paid',
+                createdAt: new Date().toISOString(),
+                verifiedAt: status === 'paid' ? new Date().toISOString() : null
+            };
+
+            systemPayments.unshift(payment);
+            order.payment = payment;
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            saveProData();
+            addAuditLog('CREATE_PAYMENT', 'PAYMENT', payment.id, `Order ${order.id}`);
+            return payment;
+        }
+
+        /* =========================
+           ADMIN USER CRUD
+        ========================= */
+
+        function renderAdminUsers() {
+            const box = document.getElementById('admin-user-list');
+            if (!box) return;
+
+            if (getCurrentUserRole() !== 'admin') {
+                box.innerHTML = `<p class="text-[9px] text-red-400">ไม่มีสิทธิ์เข้าถึงส่วนนี้</p>`;
+                return;
+            }
+
+            if (systemUsers.length === 0) {
+                box.innerHTML = `<p class="text-[9px] text-slate-500">ยังไม่มีผู้ใช้งาน</p>`;
+                return;
+            }
+
+            box.innerHTML = systemUsers.map(user => `
+                <div class="bg-slate-950/40 border border-slate-700/60 p-3 rounded-xl">
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="min-w-0">
+                            <p class="text-[10px] font-bold text-white">${escapeHTML(user.name || '-')}</p>
+                            <p class="text-[8px] text-slate-500 mt-1">${escapeHTML(user.phone || '-')} • ${escapeHTML(user.id || '-')}</p>
+                        </div>
+                        <span class="system-status ${user.status === 'active' ? 'success' : 'danger'}">
+                            ${user.status === 'active' ? 'ใช้งาน' : 'ระงับ'}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 mt-3">
+                        <select onchange="adminUpdateUser('${user.id}', 'role', this.value)" class="dark-input text-[9px] rounded-lg px-2 py-2 text-white">
+                            <option value="customer" ${user.role === 'customer' ? 'selected' : ''}>ลูกค้า</option>
+                            <option value="booster" ${user.role === 'booster' ? 'selected' : ''}>นักปั๊มแรงค์</option>
+                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option>
+                        </select>
+                        <select onchange="adminUpdateUser('${user.id}', 'status', this.value)" class="dark-input text-[9px] rounded-lg px-2 py-2 text-white">
+                            <option value="active" ${user.status === 'active' ? 'selected' : ''}>Active</option>
+                            <option value="suspended" ${user.status === 'suspended' ? 'selected' : ''}>Suspended</option>
+                        </select>
+                    </div>
+                    <button onclick="adminDeleteUser('${user.id}')" class="mt-2 w-full py-2 rounded-lg bg-red-500/5 border border-red-500/15 text-red-400 text-[9px]">
+                        <i class="fa-solid fa-trash mr-1"></i>ลบผู้ใช้งาน
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        window.adminUpdateUser = function(userId, field, value) {
+            if (!hasPermission('*')) {
+                alert('เฉพาะผู้ดูแลระบบเท่านั้น');
+                return;
+            }
+
+            const user = systemUsers.find(u => u.id === userId);
+            if (!user) return;
+
+            const oldValue = user[field];
+
+            if (field === 'role' && !['customer', 'booster', 'admin'].includes(value)) return;
+            if (field === 'status' && !['active', 'suspended'].includes(value)) return;
+
+            user[field] = value;
+            user.updatedAt = new Date().toISOString();
+            saveData(STORAGE_KEYS.users, systemUsers);
+            addAuditLog('UPDATE_USER', 'USER', userId, `${field}: ${oldValue} -> ${value}`);
+
+            if (currentSystemUser && currentSystemUser.id === userId) {
+                currentSystemUser = user;
+                saveData(STORAGE_KEYS.currentUser, currentSystemUser);
+            }
+
+            renderAdminUsers();
+            applyCurrentUserToUI();
+        };
+
+        window.adminDeleteUser = function(userId) {
+            if (!hasPermission('*')) {
+                alert('เฉพาะผู้ดูแลระบบเท่านั้น');
+                return;
+            }
+
+            if (currentSystemUser && currentSystemUser.id === userId) {
+                alert('ไม่สามารถลบบัญชีผู้ดูแลระบบที่กำลังใช้งานอยู่');
+                return;
+            }
+
+            const user = systemUsers.find(u => u.id === userId);
+            if (!user) return;
+
+            if (!confirm(`ยืนยันการลบผู้ใช้งาน ${user.name || user.phone || userId} ?`)) return;
+
+            systemUsers = systemUsers.filter(u => u.id !== userId);
+            saveData(STORAGE_KEYS.users, systemUsers);
+            addAuditLog('DELETE_USER', 'USER', userId, user.name || user.phone || '');
+            addNotification('ลบผู้ใช้งานแล้ว', `บัญชี ${user.name || user.phone || userId} ถูกลบออกจากระบบ`, 'warning');
+            renderAdminUsers();
+        };
+
+        /* =========================
+           ORDER SEARCH / DETAIL / TIMELINE
+        ========================= */
+
+        function renderOrderReport() {
+            const box = document.getElementById('order-report-list');
+            if (!box) return;
+
+            const search = (document.getElementById('order-report-search')?.value || '').trim().toLowerCase();
+            const statusFilter = document.getElementById('order-report-status')?.value || 'all';
+            const gameFilter = document.getElementById('order-report-game')?.value || 'all';
+
+            const filtered = getVisibleOrders().filter(order => {
+                const text = `${order.id} ${order.title} ${order.game} ${order.customerName || ''} ${order.boosterName || ''}`.toLowerCase();
+                return (!search || text.includes(search)) &&
+                    (statusFilter === 'all' || order.status === statusFilter) &&
+                    (gameFilter === 'all' || order.game === gameFilter);
+            }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+            if (!filtered.length) {
+                box.innerHTML = `<div class="text-center py-8 text-slate-500 text-xs">ไม่พบข้อมูลคำสั่งซื้อ</div>`;
+                return;
+            }
+
+            box.innerHTML = filtered.map(order => `
+                <button onclick="openOrderDetail('${order.id}')" class="w-full text-left bg-slate-950/40 border border-slate-700/60 p-3 rounded-xl hover:border-amber-500/30 transition">
+                    <div class="flex justify-between gap-2">
+                        <div class="min-w-0">
+                            <p class="text-[8px] text-amber-400 font-bold">${escapeHTML(order.id)}</p>
+                            <p class="text-[10px] font-bold text-white mt-1 truncate">${escapeHTML(order.title)}</p>
+                            <p class="text-[8px] text-slate-500 mt-1">${escapeHTML(order.game)} • ${formatDateTime(order.createdAt)}</p>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <p class="text-[10px] text-emerald-400 font-bold">${Number(order.netAmount || order.price || 0).toLocaleString('th-TH')} บาท</p>
+                            <div class="mt-1">${statusHTML(order.status)}</div>
+                        </div>
+                    </div>
+                </button>
+            `).join('');
+        }
+
+        window.openOrderDetail = function(orderId) {
+            const order = systemOrders.find(o => o.id === orderId);
+            if (!order) return;
+
+            const box = document.getElementById('order-detail-content');
+            if (!box) return;
+
+            const timeline = Array.isArray(order.timeline) ? order.timeline : [];
+
+            box.innerHTML = `
+                <div class="glass p-4 rounded-2xl mb-4">
+                    <div class="flex justify-between gap-3">
+                        <div>
+                            <p class="text-[8px] text-amber-400">ORDER ID</p>
+                            <h3 class="text-sm font-bold text-white mt-1">${escapeHTML(order.id)}</h3>
+                        </div>
+                        <div>${statusHTML(order.status)}</div>
+                    </div>
+                    <p class="text-[10px] text-slate-300 mt-3">${escapeHTML(order.title)}</p>
+                    <div class="grid grid-cols-2 gap-2 mt-3 text-[9px]">
+                        <div class="bg-slate-950/50 rounded-xl p-3"><span class="text-slate-500 block">ลูกค้า</span><span class="text-white">${escapeHTML(order.customerName || '-')}</span></div>
+                        <div class="bg-slate-950/50 rounded-xl p-3"><span class="text-slate-500 block">ผู้รับงาน</span><span class="text-white">${escapeHTML(order.boosterName || '-')}</span></div>
+                        <div class="bg-slate-950/50 rounded-xl p-3"><span class="text-slate-500 block">ราคางาน</span><span class="text-emerald-400 font-bold">${Number(order.price || 0).toLocaleString('th-TH')} บาท</span></div>
+                        <div class="bg-slate-950/50 rounded-xl p-3"><span class="text-slate-500 block">ยอดสุทธิ</span><span class="text-emerald-400 font-bold">${Number(order.netAmount || 0).toLocaleString('th-TH')} บาท</span></div>
+                    </div>
+                </div>
+
+                <div class="glass p-4 rounded-2xl">
+                    <p class="text-[9px] text-amber-400 uppercase tracking-widest mb-4">Transaction Timeline</p>
+                    <div class="space-y-3">
+                        ${timeline.map((item, index) => `
+                            <div class="flex gap-3">
+                                <div class="flex flex-col items-center">
+                                    <span class="w-7 h-7 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center text-[9px]">${index + 1}</span>
+                                    ${index < timeline.length - 1 ? '<span class="w-px flex-1 bg-slate-700 mt-1"></span>' : ''}
+                                </div>
+                                <div class="pb-3 min-w-0">
+                                    <p class="text-[10px] font-bold text-white">${escapeHTML(item.status)}</p>
+                                    <p class="text-[9px] text-slate-400 mt-1">${escapeHTML(item.note || '')}</p>
+                                    <p class="text-[8px] text-slate-600 mt-1">${escapeHTML(item.actorName || 'ระบบ')} • ${formatDateTime(item.createdAt)}</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            switchView('view-order-detail');
+        };
+
+        /* =========================
+           REPORT / CHART DATA
+        ========================= */
+
+        function calculateAdvancedReport() {
+            const orders = getVisibleOrders();
+            const gameCounts = {};
+            const statusCounts = {};
+            const daily = {};
+
+            orders.forEach(order => {
+                gameCounts[order.game] = (gameCounts[order.game] || 0) + 1;
+                statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+
+                const key = new Date(order.createdAt).toLocaleDateString('th-TH', {
+                    day: '2-digit',
+                    month: '2-digit'
+                });
+                daily[key] = (daily[key] || 0) + 1;
+            });
+
+            return { orders, gameCounts, statusCounts, daily };
+        }
+
+        function renderAdvancedReport() {
+            const report = calculateAdvancedReport();
+            const gameBox = document.getElementById('report-game-chart');
+            const statusBox = document.getElementById('report-status-chart');
+            const dailyBox = document.getElementById('report-daily-chart');
+            if (!gameBox || !statusBox || !dailyBox) return;
+
+            const maxGame = Math.max(1, ...Object.values(report.gameCounts));
+            const maxStatus = Math.max(1, ...Object.values(report.statusCounts));
+            const dailyEntries = Object.entries(report.daily).slice(-7);
+            const maxDaily = Math.max(1, ...dailyEntries.map(x => x[1]));
+
+            gameBox.innerHTML = Object.entries(report.gameCounts).length
+                ? Object.entries(report.gameCounts).map(([game, count]) => `
+                    <div class="mb-3">
+                        <div class="flex justify-between text-[9px] mb-1"><span class="text-slate-300">${escapeHTML(game)}</span><span class="text-white font-bold">${count}</span></div>
+                        <div class="system-progress"><div style="width:${Math.round(count / maxGame * 100)}%"></div></div>
+                    </div>
+                `).join('')
+                : '<p class="text-[9px] text-slate-500">ยังไม่มีข้อมูล</p>';
+
+            statusBox.innerHTML = Object.entries(report.statusCounts).length
+                ? Object.entries(report.statusCounts).map(([status, count]) => `
+                    <div class="mb-3">
+                        <div class="flex justify-between text-[9px] mb-1"><span class="text-slate-300">${escapeHTML(status)}</span><span class="text-white font-bold">${count}</span></div>
+                        <div class="system-progress"><div style="width:${Math.round(count / maxStatus * 100)}%"></div></div>
+                    </div>
+                `).join('')
+                : '<p class="text-[9px] text-slate-500">ยังไม่มีข้อมูล</p>';
+
+            dailyBox.innerHTML = dailyEntries.length
+                ? dailyEntries.map(([day, count]) => `
+                    <div class="flex items-end gap-2 h-28">
+                        <div class="flex-1 h-full flex flex-col justify-end items-center gap-1">
+                            <span class="text-[8px] text-white">${count}</span>
+                            <div class="w-full max-w-[26px] rounded-t-lg bg-amber-500/70" style="height:${Math.max(8, Math.round(count / maxDaily * 85))}%"></div>
+                            <span class="text-[7px] text-slate-500">${escapeHTML(day)}</span>
+                        </div>
+                    </div>
+                `).join('')
+                : '<p class="text-[9px] text-slate-500">ยังไม่มีข้อมูลรายวัน</p>';
+        }
+
+        /* =========================
+           PRO VIEWS
+        ========================= */
+
+        function createProViews() {
+            const screen = document.querySelector('.screen-content');
+            if (!screen) return;
+
+            if (!document.getElementById('view-order-report')) {
+                screen.insertAdjacentHTML('beforeend', `
+                    <div id="view-order-report" class="hidden p-5">
+                        <div class="flex items-center mb-5">
+                            <button onclick="switchView('view-dashboard')" class="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 mr-3"><i class="fa-solid fa-arrow-left"></i></button>
+                            <div>
+                                <p class="text-[9px] text-amber-400 uppercase">Reports</p>
+                                <h2 class="text-sm font-bold text-white">รายงานและค้นหาคำสั่งซื้อ</h2>
+                            </div>
+                        </div>
+
+                        <div class="glass p-3 rounded-2xl mb-4 space-y-2">
+                            <input id="order-report-search" oninput="renderOrderReport()" type="search" placeholder="ค้นหา Order ID / งาน / ลูกค้า / Booster" class="dark-input w-full px-3 py-2.5 rounded-xl text-xs text-white focus:outline-none">
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="order-report-status" onchange="renderOrderReport()" class="dark-input w-full p-2.5 rounded-xl text-[9px] text-white">
+                                    <option value="all">ทุกสถานะ</option>
+                                    ${Object.values(ORDER_STATUS).map(s => `<option value="${s}">${s}</option>`).join('')}
+                                </select>
+                                <select id="order-report-game" onchange="renderOrderReport()" class="dark-input w-full p-2.5 rounded-xl text-[9px] text-white">
+                                    <option value="all">ทุกเกม</option>
+                                    <option value="ROV">ROV</option>
+                                    <option value="PUBG">PUBG</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="order-report-list" class="space-y-2"></div>
+                    </div>
+
+                    <div id="view-order-detail" class="hidden p-5">
+                        <div class="flex items-center mb-5">
+                            <button onclick="switchView('view-order-report')" class="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 mr-3"><i class="fa-solid fa-arrow-left"></i></button>
+                            <div>
+                                <p class="text-[9px] text-amber-400 uppercase">Order Detail</p>
+                                <h2 class="text-sm font-bold text-white">รายละเอียดคำสั่งซื้อ</h2>
+                            </div>
+                        </div>
+                        <div id="order-detail-content"></div>
+                    </div>
+
+                    <div id="view-admin-users" class="hidden p-5">
+                        <div class="flex items-center mb-5">
+                            <button onclick="switchView('view-dashboard')" class="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 mr-3"><i class="fa-solid fa-arrow-left"></i></button>
+                            <div>
+                                <p class="text-[9px] text-amber-400 uppercase">Administration</p>
+                                <h2 class="text-sm font-bold text-white">จัดการผู้ใช้งาน</h2>
+                            </div>
+                        </div>
+                        <div class="bg-amber-500/5 border border-amber-500/10 p-3 rounded-xl mb-4 text-[9px] text-slate-400">
+                            <i class="fa-solid fa-shield-halved text-amber-400 mr-1"></i>
+                            เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถเปลี่ยน Role และสถานะบัญชีได้
+                        </div>
+                        <div id="admin-user-list" class="space-y-2"></div>
+                    </div>
+
+                    <div id="view-advanced-report" class="hidden p-5">
+                        <div class="flex items-center mb-5">
+                            <button onclick="switchView('view-dashboard')" class="w-9 h-9 rounded-xl bg-slate-800 text-slate-400 mr-3"><i class="fa-solid fa-arrow-left"></i></button>
+                            <div>
+                                <p class="text-[9px] text-amber-400 uppercase">Analytics</p>
+                                <h2 class="text-sm font-bold text-white">Dashboard และรายงานเชิงลึก</h2>
+                            </div>
+                        </div>
+
+                        <div class="glass p-4 rounded-2xl mb-4">
+                            <p class="text-[9px] text-slate-500 uppercase tracking-widest mb-3">งานแยกตามเกม</p>
+                            <div id="report-game-chart"></div>
+                        </div>
+
+                        <div class="glass p-4 rounded-2xl mb-4">
+                            <p class="text-[9px] text-slate-500 uppercase tracking-widest mb-3">งานแยกตามสถานะ</p>
+                            <div id="report-status-chart"></div>
+                        </div>
+
+                        <div class="glass p-4 rounded-2xl mb-4">
+                            <p class="text-[9px] text-slate-500 uppercase tracking-widest mb-3">จำนวนงานย้อนหลัง 7 วัน</p>
+                            <div id="report-daily-chart" class="grid grid-cols-7 gap-1 items-end"></div>
+                        </div>
+
+                        <div class="glass p-4 rounded-2xl">
+                            <p class="text-[9px] text-slate-500 uppercase tracking-widest">Audit Log ล่าสุด</p>
+                            <div id="audit-log-list" class="space-y-2 mt-3"></div>
+                        </div>
+                    </div>
+                `);
+            }
+        }
+
+        function renderAuditLog() {
+            const box = document.getElementById('audit-log-list');
+            if (!box) return;
+
+            if (getCurrentUserRole() !== 'admin') {
+                box.innerHTML = '<p class="text-[9px] text-slate-500">เฉพาะ Admin</p>';
+                return;
+            }
+
+            box.innerHTML = systemAudit.slice(0, 20).map(item => `
+                <div class="bg-slate-950/40 border border-slate-700/50 rounded-xl p-2.5">
+                    <p class="text-[9px] text-white font-bold">${escapeHTML(item.action)} • ${escapeHTML(item.targetType)}</p>
+                    <p class="text-[8px] text-slate-500 mt-1">${escapeHTML(item.actorName)} • ${formatDateTime(item.createdAt)}</p>
+                    <p class="text-[8px] text-slate-400 mt-1">${escapeHTML(item.detail || '')}</p>
+                </div>
+            `).join('') || '<p class="text-[9px] text-slate-500">ยังไม่มี Audit Log</p>';
+        }
+
+        /* =========================
+           DASHBOARD UPGRADE
+        ========================= */
+
+        const legacyRenderDashboard = renderDashboard;
+        renderDashboard = function() {
+            legacyRenderDashboard();
+
+            const visibleOrders = getVisibleOrders();
+            const completed = visibleOrders.filter(o => o.status === ORDER_STATUS.SUCCESS).length;
+            const revenue = visibleOrders
+                .filter(o => o.status === ORDER_STATUS.SUCCESS)
+                .reduce((sum, o) => sum + Number(o.netAmount || o.price || 0), 0);
+            const set = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = value;
+            };
+
+            set('dashboard-visible-total', visibleOrders.length);
+            set('dashboard-visible-completed', completed);
+            set('dashboard-visible-revenue', revenue.toLocaleString('th-TH') + ' บาท');
+
+            const adminOnly = getCurrentUserRole() === 'admin';
+            ['nav-admin-users', 'nav-report-admin'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.toggle('hidden', !adminOnly);
+            });
+        };
+
+        /* =========================
+           PERMISSION GUARDS
+        ========================= */
+
+        const legacyAcceptJobPro = window.acceptJob;
+        window.acceptJob = function(jobId) {
+            if (!hasPermission('accept_job')) {
+                addNotification('ไม่สามารถรับงานได้', 'บัญชีประเภทนี้ไม่มีสิทธิ์รับงาน Booster', 'warning', getCurrentUserId());
+                alert('เฉพาะบัญชี นักปั๊มแรงค์ หรือผู้ดูแลระบบเท่านั้นที่สามารถรับงานได้');
+                return;
+            }
+            legacyAcceptJobPro(jobId);
+        };
+
+        const legacyChangeOrderStatusPro = window.changeOrderStatus;
+        window.changeOrderStatus = function(orderId, status) {
+            if (!hasPermission('*')) {
+                alert('เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถเปลี่ยนสถานะจากหน้านี้ได้');
+                return;
+            }
+
+            const order = systemOrders.find(o => o.id === orderId);
+            if (!order) return;
+
+            const oldStatus = order.status;
+            order.status = status;
+            order.updatedAt = new Date().toISOString();
+            addOrderTimeline(order, status, `ผู้ดูแลระบบเปลี่ยนสถานะจาก ${oldStatus} เป็น ${status}`);
+            addAuditLog('ADMIN_STATUS_CHANGE', 'ORDER', orderId, `${oldStatus} -> ${status}`);
+            saveData(STORAGE_KEYS.orders, systemOrders);
+
+            addNotification(
+                'อัปเดตสถานะคำสั่งซื้อ',
+                `${order.id} เปลี่ยนสถานะเป็น ${status}`,
+                status === ORDER_STATUS.SUCCESS ? 'success' : 'info',
+                order.customerId,
+                order.id
+            );
+
+            if (order.boosterId) {
+                addNotification(
+                    'อัปเดตสถานะงาน',
+                    `${order.id} เปลี่ยนสถานะเป็น ${status}`,
+                    status === ORDER_STATUS.SUCCESS ? 'success' : 'info',
+                    order.boosterId,
+                    order.id
+                );
+            }
+
+            refreshSystemData();
+        };
+
+        const legacySubmitEvidencePro = window.submitEvidenceAndComplete;
+        window.submitEvidenceAndComplete = function() {
+            if (!hasPermission('submit_evidence')) {
+                alert('เฉพาะนักปั๊มแรงค์ที่รับงานเท่านั้นที่สามารถส่งหลักฐานได้');
+                return;
+            }
+
+            const input = document.getElementById('evidence-file');
+            const file = input && input.files ? input.files[0] : null;
+
+            if (!file) {
+                alert('กรุณาเลือกไฟล์หลักฐาน');
+                return;
+            }
+
+            if (!file.type.startsWith('image/')) {
+                alert('กรุณาอัปโหลดไฟล์รูปภาพเท่านั้น');
+                return;
+            }
+
+            if (file.size > 5 * 1024 * 1024) {
+                alert('ไฟล์หลักฐานต้องมีขนาดไม่เกิน 5 MB');
+                return;
+            }
+
+            legacySubmitEvidencePro();
+        };
+
+        /* =========================
+           PAYMENT RECORD WRAPPER
+        ========================= */
+
+        const legacyCompletePaymentPro = window.completePayment;
+        window.completePayment = function() {
+            if (!hasPermission('create_order')) {
+                alert('เฉพาะลูกค้าหรือผู้ดูแลระบบเท่านั้นที่สามารถสร้างคำสั่งซื้อได้');
+                return;
+            }
+
+            const beforeIds = new Set(jobPostings.map(j => j.id));
+            legacyCompletePaymentPro();
+
+            const newJob = jobPostings.find(j => !beforeIds.has(j.id));
+            if (!newJob) return;
+
+            const order = createOrderFromJob(newJob, ORDER_STATUS.WAITING);
+            if (!order) return;
+
+            order.fee = Math.round(Number(order.price || 0) * 0.05);
+            order.discount = Number(order.discount || 0);
+            order.netAmount = Number(order.price || 0) + order.fee - order.discount;
+            order.paymentStatus = 'paid';
+            order.updatedAt = new Date().toISOString();
+
+            createPaymentRecord(order, 'paid');
+            addOrderTimeline(order, ORDER_STATUS.WAITING, 'ยืนยันการชำระเงินและสร้างงานเข้าสู่ตลาด');
+            addAuditLog('CREATE_ORDER', 'ORDER', order.id, 'สร้างจากการชำระเงิน');
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            syncHistoryFromOrders();
+
+            addNotification(
+                'สร้างคำสั่งซื้อสำเร็จ',
+                `${order.id} เข้าสู่ตลาดงานแล้ว สถานะ: ${order.status}`,
+                'success',
+                order.customerId,
+                order.id
+            );
+
+            refreshSystemData();
+        };
+
+        /* =========================
+           PRO REFRESH / VIEW
+        ========================= */
+
+        const legacyRefreshSystemDataPro = window.refreshSystemData;
+        window.refreshSystemData = function() {
+            legacyRefreshSystemDataPro();
+            renderAdminUsers();
+            renderOrderReport();
+            renderAdvancedReport();
+            renderAuditLog();
+        };
+
+        const legacySwitchViewPro = window.switchView;
+        window.switchView = function(viewId) {
+            const protectedViews = ['view-admin-users'];
+            if (protectedViews.includes(viewId) && getCurrentUserRole() !== 'admin') {
+                alert('หน้านี้สำหรับผู้ดูแลระบบเท่านั้น');
+                return;
+            }
+
+            legacySwitchViewPro(viewId);
+
+            if (viewId === 'view-order-report') renderOrderReport();
+            if (viewId === 'view-admin-users') renderAdminUsers();
+            if (viewId === 'view-advanced-report') {
+                renderAdvancedReport();
+                renderAuditLog();
+            }
+        };
+
+        function createProNavigation() {
+            const nav = document.getElementById('bottom-nav');
+            if (!nav || document.getElementById('nav-report-admin')) return;
+
+            const reportButton = document.createElement('button');
+            reportButton.id = 'nav-report-admin';
+            reportButton.className = 'flex flex-col items-center hover:text-amber-400';
+            reportButton.innerHTML = `
+                <i class="fa-solid fa-chart-column text-base"></i>
+                <span class="text-[9px] mt-1">รายงาน</span>
+            `;
+            reportButton.onclick = () => window.switchView('view-advanced-report');
+            nav.appendChild(reportButton);
+
+            const adminButton = document.createElement('button');
+            adminButton.id = 'nav-admin-users';
+            adminButton.className = 'flex flex-col items-center hover:text-amber-400';
+            adminButton.innerHTML = `
+                <i class="fa-solid fa-users-gear text-base"></i>
+                <span class="text-[9px] mt-1">จัดการ</span>
+            `;
+            adminButton.onclick = () => window.switchView('view-admin-users');
+            nav.appendChild(adminButton);
+        }
+
+        /* Add extra dashboard summary cards without replacing the original UI. */
+        function enhanceDashboardCards() {
+            const dashboard = document.getElementById('view-dashboard');
+            if (!dashboard || document.getElementById('dashboard-pro-summary')) return;
+
+            const summary = document.createElement('div');
+            summary.id = 'dashboard-pro-summary';
+            summary.className = 'grid grid-cols-3 gap-2 mb-4';
+            summary.innerHTML = `
+                <div class="dashboard-stat p-3 rounded-xl">
+                    <p class="text-[8px] text-slate-500">รายการของฉัน</p>
+                    <p id="dashboard-visible-total" class="text-lg font-extrabold text-white mt-1">0</p>
+                </div>
+                <div class="dashboard-stat p-3 rounded-xl">
+                    <p class="text-[8px] text-slate-500">สำเร็จ</p>
+                    <p id="dashboard-visible-completed" class="text-lg font-extrabold text-emerald-400 mt-1">0</p>
+                </div>
+                <div class="dashboard-stat p-3 rounded-xl">
+                    <p class="text-[8px] text-slate-500">ยอดสุทธิ</p>
+                    <p id="dashboard-visible-revenue" class="text-sm font-extrabold text-emerald-400 mt-2">0 บาท</p>
+                </div>
+            `;
+
+            const statsGrid = dashboard.querySelector('.grid.grid-cols-2');
+            if (statsGrid) statsGrid.after(summary);
+
+            const adminPanel = document.getElementById('admin-dashboard-panel');
+            if (adminPanel && !document.getElementById('dashboard-action-links')) {
+                const actions = document.createElement('div');
+                actions.id = 'dashboard-action-links';
+                actions.className = 'grid grid-cols-2 gap-2 mt-3';
+                actions.innerHTML = `
+                    <button onclick="switchView('view-order-report')" class="py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-[9px] text-slate-300">
+                        <i class="fa-solid fa-magnifying-glass mr-1 text-amber-400"></i>ค้นหาคำสั่งซื้อ
+                    </button>
+                    <button onclick="switchView('view-admin-users')" class="py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-[9px] text-slate-300">
+                        <i class="fa-solid fa-users-gear mr-1 text-amber-400"></i>จัดการผู้ใช้
+                    </button>
+                `;
+                adminPanel.appendChild(actions);
+            }
+        }
+
+        /* =========================
+           PRO INITIALIZATION
+        ========================= */
+
+        createSystemViews();
+        createProViews();
+        createProNavigation();
+        enhanceDashboardCards();
+        renderAdminUsers();
+        renderOrderReport();
+        renderAdvancedReport();
+        renderAuditLog();
+        /* =========================
+           DEMO DATA / SAMPLE ACCOUNTS
+           ข้อมูลตัวอย่างสมจริงสำหรับทดสอบระบบ
+           5 ผู้ใช้งาน: ลูกค้า 3 คน + นักปั๊มแรงค์ 2 คน
+           + บัญชี Admin สำหรับทดสอบการจัดการระบบ
+           ข้อมูลทั้งหมดเป็นข้อมูลสมมติ ไม่ใช่ข้อมูลบุคคลจริง
+           ========================= */
+
+        function seedDemoData() {
+            const DEMO_VERSION_KEY = 'rankboost_demo_seed_v1';
+
+            if (localStorage.getItem(DEMO_VERSION_KEY) === '1') {
+                return;
+            }
+
+            const demoUsers = [
+                {
+                    id: 'U-DEMO-C001',
+                    name: 'ณัฐพงษ์ ศรีทอง',
+                    phone: '0810001001',
+                    role: 'customer',
+                    status: 'active',
+                    createdAt: '2026-09-20T09:15:00+07:00'
+                },
+                {
+                    id: 'U-DEMO-C002',
+                    name: 'พิมพ์ชนก วัฒนชัย',
+                    phone: '0810001002',
+                    role: 'customer',
+                    status: 'active',
+                    createdAt: '2026-09-21T10:20:00+07:00'
+                },
+                {
+                    id: 'U-DEMO-C003',
+                    name: 'กิตติพงศ์ คำดี',
+                    phone: '0810001003',
+                    role: 'customer',
+                    status: 'active',
+                    createdAt: '2026-09-22T14:10:00+07:00'
+                },
+                {
+                    id: 'U-DEMO-B001',
+                    name: 'ธนกร รุ่งเรือง',
+                    phone: '0810002001',
+                    role: 'booster',
+                    status: 'active',
+                    createdAt: '2026-09-19T11:30:00+07:00'
+                },
+                {
+                    id: 'U-DEMO-B002',
+                    name: 'ศุภชัย อินทรา',
+                    phone: '0810002002',
+                    role: 'booster',
+                    status: 'active',
+                    createdAt: '2026-09-20T16:45:00+07:00'
+                },
+                {
+                    id: 'U-DEMO-A001',
+                    name: 'ผู้ดูแลระบบ Demo',
+                    phone: '0810009000',
+                    role: 'admin',
+                    status: 'active',
+                    createdAt: '2026-09-18T08:00:00+07:00'
+                }
+            ];
+
+            const demoJobs = [
+                {
+                    id: 1001,
+                    game: 'ROV',
+                    title: 'ROV: Platinum III ➔ Diamond V',
+                    price: 400,
+                    poster: 'ณัฐพงษ์ ศรีทอง (ลูกค้า)'
+                },
+                {
+                    id: 1002,
+                    game: 'PUBG',
+                    title: 'PUBG: Silver ➔ Gold',
+                    price: 250,
+                    poster: 'พิมพ์ชนก วัฒนชัย (ลูกค้า)'
+                },
+                {
+                    id: 1003,
+                    game: 'ROV',
+                    title: 'ROV: Diamond IV ➔ Commander V',
+                    price: 650,
+                    poster: 'กิตติพงศ์ คำดี (ลูกค้า)'
+                },
+                {
+                    id: 1004,
+                    game: 'PUBG',
+                    title: 'PUBG: Platinum ➔ Diamond',
+                    price: 550,
+                    poster: 'ณัฐพงษ์ ศรีทอง (ลูกค้า)'
+                },
+                {
+                    id: 1005,
+                    game: 'ROV',
+                    title: 'ROV: Gold I ➔ Platinum V',
+                    price: 300,
+                    poster: 'พิมพ์ชนก วัฒนชัย (ลูกค้า)'
+                },
+                {
+                    id: 1006,
+                    game: 'PUBG',
+                    title: 'PUBG: Gold ➔ Crown',
+                    price: 750,
+                    poster: 'กิตติพงศ์ คำดี (ลูกค้า)'
+                }
+            ];
+
+            const demoOrders = [
+                {
+                    id: 'RB-20260925-0101',
+                    jobId: 1001,
+                    customerId: 'U-DEMO-C001',
+                    customerName: 'ณัฐพงษ์ ศรีทอง',
+                    boosterId: 'U-DEMO-B001',
+                    boosterName: 'ธนกร รุ่งเรือง',
+                    game: 'ROV',
+                    title: 'ROV: Platinum III ➔ Diamond V',
+                    price: 400,
+                    fee: 20,
+                    discount: 0,
+                    netAmount: 420,
+                    status: ORDER_STATUS.SUCCESS,
+                    evidence: { fileName: 'rov-diamond-proof.jpg', size: 2480000 },
+                    paymentStatus: 'paid',
+                    payment: {
+                        id: 'PAY-DEMO-0101',
+                        orderId: 'RB-20260925-0101',
+                        customerId: 'U-DEMO-C001',
+                        method: 'PromptPay QR',
+                        amount: 420,
+                        status: 'paid',
+                        verified: true,
+                        createdAt: '2026-09-25T09:12:00+07:00',
+                        verifiedAt: '2026-09-25T09:13:00+07:00'
+                    },
+                    createdAt: '2026-09-25T09:10:00+07:00',
+                    updatedAt: '2026-09-25T13:45:00+07:00',
+                    timeline: [
+                        { status: ORDER_STATUS.WAITING, note: 'สร้างคำสั่งซื้อและชำระเงินเข้าสู่ระบบกลาง', actorId: 'U-DEMO-C001', actorName: 'ณัฐพงษ์ ศรีทอง', actorRole: 'customer', createdAt: '2026-09-25T09:10:00+07:00' },
+                        { status: ORDER_STATUS.ACCEPTED, note: 'ธนกร รุ่งเรือง รับงานเรียบร้อย', actorId: 'U-DEMO-B001', actorName: 'ธนกร รุ่งเรือง', actorRole: 'booster', createdAt: '2026-09-25T09:25:00+07:00' },
+                        { status: ORDER_STATUS.PROGRESS, note: 'เริ่มดำเนินการปั๊มแรงค์', actorId: 'U-DEMO-B001', actorName: 'ธนกร รุ่งเรือง', actorRole: 'booster', createdAt: '2026-09-25T10:00:00+07:00' },
+                        { status: ORDER_STATUS.REVIEW, note: 'ส่งหลักฐานให้ระบบตรวจสอบ', actorId: 'U-DEMO-B001', actorName: 'ธนกร รุ่งเรือง', actorRole: 'booster', createdAt: '2026-09-25T13:20:00+07:00' },
+                        { status: ORDER_STATUS.SUCCESS, note: 'ตรวจสอบหลักฐานผ่านและปิดงาน', actorId: 'U-DEMO-A001', actorName: 'ผู้ดูแลระบบ Demo', actorRole: 'admin', createdAt: '2026-09-25T13:45:00+07:00' }
+                    ]
+                },
+                {
+                    id: 'RB-20260926-0102',
+                    jobId: 1002,
+                    customerId: 'U-DEMO-C002',
+                    customerName: 'พิมพ์ชนก วัฒนชัย',
+                    boosterId: 'U-DEMO-B002',
+                    boosterName: 'ศุภชัย อินทรา',
+                    game: 'PUBG',
+                    title: 'PUBG: Silver ➔ Gold',
+                    price: 250,
+                    fee: 13,
+                    discount: 0,
+                    netAmount: 263,
+                    status: ORDER_STATUS.PROGRESS,
+                    evidence: null,
+                    paymentStatus: 'paid',
+                    payment: {
+                        id: 'PAY-DEMO-0102', orderId: 'RB-20260926-0102', customerId: 'U-DEMO-C002',
+                        method: 'PromptPay QR', amount: 263, status: 'paid', verified: true,
+                        createdAt: '2026-09-26T11:00:00+07:00', verifiedAt: '2026-09-26T11:02:00+07:00'
+                    },
+                    createdAt: '2026-09-26T10:58:00+07:00',
+                    updatedAt: '2026-09-26T14:30:00+07:00',
+                    timeline: [
+                        { status: ORDER_STATUS.WAITING, note: 'สร้างคำสั่งซื้อและชำระเงินแล้ว', actorId: 'U-DEMO-C002', actorName: 'พิมพ์ชนก วัฒนชัย', actorRole: 'customer', createdAt: '2026-09-26T10:58:00+07:00' },
+                        { status: ORDER_STATUS.ACCEPTED, note: 'ศุภชัย อินทรา รับงาน', actorId: 'U-DEMO-B002', actorName: 'ศุภชัย อินทรา', actorRole: 'booster', createdAt: '2026-09-26T11:20:00+07:00' },
+                        { status: ORDER_STATUS.PROGRESS, note: 'กำลังดำเนินการปั๊มแรงค์', actorId: 'U-DEMO-B002', actorName: 'ศุภชัย อินทรา', actorRole: 'booster', createdAt: '2026-09-26T14:30:00+07:00' }
+                    ]
+                },
+                {
+                    id: 'RB-20260927-0103',
+                    jobId: 1003,
+                    customerId: 'U-DEMO-C003',
+                    customerName: 'กิตติพงศ์ คำดี',
+                    boosterId: 'U-DEMO-B001',
+                    boosterName: 'ธนกร รุ่งเรือง',
+                    game: 'ROV',
+                    title: 'ROV: Diamond IV ➔ Commander V',
+                    price: 650,
+                    fee: 33,
+                    discount: 50,
+                    netAmount: 633,
+                    status: ORDER_STATUS.REVIEW,
+                    evidence: { fileName: 'rov-commander-proof.jpg', size: 3120000 },
+                    paymentStatus: 'paid',
+                    payment: {
+                        id: 'PAY-DEMO-0103', orderId: 'RB-20260927-0103', customerId: 'U-DEMO-C003',
+                        method: 'PromptPay QR', amount: 633, status: 'paid', verified: true,
+                        createdAt: '2026-09-27T08:40:00+07:00', verifiedAt: '2026-09-27T08:42:00+07:00'
+                    },
+                    createdAt: '2026-09-27T08:38:00+07:00',
+                    updatedAt: '2026-09-27T17:10:00+07:00',
+                    timeline: [
+                        { status: ORDER_STATUS.WAITING, note: 'สร้างคำสั่งซื้อ', actorId: 'U-DEMO-C003', actorName: 'กิตติพงศ์ คำดี', actorRole: 'customer', createdAt: '2026-09-27T08:38:00+07:00' },
+                        { status: ORDER_STATUS.ACCEPTED, note: 'รับงานโดย ธนกร รุ่งเรือง', actorId: 'U-DEMO-B001', actorName: 'ธนกร รุ่งเรือง', actorRole: 'booster', createdAt: '2026-09-27T09:00:00+07:00' },
+                        { status: ORDER_STATUS.PROGRESS, note: 'กำลังปั๊มแรงค์', actorId: 'U-DEMO-B001', actorName: 'ธนกร รุ่งเรือง', actorRole: 'booster', createdAt: '2026-09-27T10:15:00+07:00' },
+                        { status: ORDER_STATUS.REVIEW, note: 'ส่งหลักฐาน รอ Admin ตรวจสอบ', actorId: 'U-DEMO-B001', actorName: 'ธนกร รุ่งเรือง', actorRole: 'booster', createdAt: '2026-09-27T17:10:00+07:00' }
+                    ]
+                },
+                {
+                    id: 'RB-20260928-0104',
+                    jobId: 1004,
+                    customerId: 'U-DEMO-C001',
+                    customerName: 'ณัฐพงษ์ ศรีทอง',
+                    boosterId: 'U-DEMO-B002',
+                    boosterName: 'ศุภชัย อินทรา',
+                    game: 'PUBG',
+                    title: 'PUBG: Platinum ➔ Diamond',
+                    price: 550,
+                    fee: 28,
+                    discount: 0,
+                    netAmount: 578,
+                    status: ORDER_STATUS.ACCEPTED,
+                    evidence: null,
+                    paymentStatus: 'paid',
+                    payment: {
+                        id: 'PAY-DEMO-0104', orderId: 'RB-20260928-0104', customerId: 'U-DEMO-C001',
+                        method: 'PromptPay QR', amount: 578, status: 'paid', verified: true,
+                        createdAt: '2026-09-28T15:10:00+07:00', verifiedAt: '2026-09-28T15:11:00+07:00'
+                    },
+                    createdAt: '2026-09-28T15:08:00+07:00',
+                    updatedAt: '2026-09-28T15:40:00+07:00',
+                    timeline: [
+                        { status: ORDER_STATUS.WAITING, note: 'สร้างงานและชำระเงินแล้ว', actorId: 'U-DEMO-C001', actorName: 'ณัฐพงษ์ ศรีทอง', actorRole: 'customer', createdAt: '2026-09-28T15:08:00+07:00' },
+                        { status: ORDER_STATUS.ACCEPTED, note: 'ศุภชัย อินทรา รับงานและยืนยันรายละเอียด', actorId: 'U-DEMO-B002', actorName: 'ศุภชัย อินทรา', actorRole: 'booster', createdAt: '2026-09-28T15:40:00+07:00' }
+                    ]
+                },
+                {
+                    id: 'RB-20260929-0105',
+                    jobId: 1005,
+                    customerId: 'U-DEMO-C002',
+                    customerName: 'พิมพ์ชนก วัฒนชัย',
+                    boosterId: 'U-DEMO-B001',
+                    boosterName: 'ธนกร รุ่งเรือง',
+                    game: 'ROV',
+                    title: 'ROV: Gold I ➔ Platinum V',
+                    price: 300,
+                    fee: 15,
+                    discount: 0,
+                    netAmount: 315,
+                    status: ORDER_STATUS.CANCELLED,
+                    evidence: null,
+                    paymentStatus: 'refunded',
+                    payment: {
+                        id: 'PAY-DEMO-0105', orderId: 'RB-20260929-0105', customerId: 'U-DEMO-C002',
+                        method: 'PromptPay QR', amount: 315, status: 'refunded', verified: true,
+                        createdAt: '2026-09-29T09:20:00+07:00', verifiedAt: '2026-09-29T09:21:00+07:00'
+                    },
+                    createdAt: '2026-09-29T09:18:00+07:00',
+                    updatedAt: '2026-09-29T12:30:00+07:00',
+                    timeline: [
+                        { status: ORDER_STATUS.WAITING, note: 'สร้างคำสั่งซื้อ', actorId: 'U-DEMO-C002', actorName: 'พิมพ์ชนก วัฒนชัย', actorRole: 'customer', createdAt: '2026-09-29T09:18:00+07:00' },
+                        { status: ORDER_STATUS.CANCELLED, note: 'ยกเลิกคำสั่งซื้อและบันทึกสถานะคืนเงิน', actorId: 'U-DEMO-A001', actorName: 'ผู้ดูแลระบบ Demo', actorRole: 'admin', createdAt: '2026-09-29T12:30:00+07:00' }
+                    ]
+                },
+                {
+                    id: 'RB-20260930-0106',
+                    jobId: 1006,
+                    customerId: 'U-DEMO-C003',
+                    customerName: 'กิตติพงศ์ คำดี',
+                    boosterId: null,
+                    boosterName: null,
+                    game: 'PUBG',
+                    title: 'PUBG: Gold ➔ Crown',
+                    price: 750,
+                    fee: 38,
+                    discount: 0,
+                    netAmount: 788,
+                    status: ORDER_STATUS.WAITING,
+                    evidence: null,
+                    paymentStatus: 'paid',
+                    payment: {
+                        id: 'PAY-DEMO-0106', orderId: 'RB-20260930-0106', customerId: 'U-DEMO-C003',
+                        method: 'PromptPay QR', amount: 788, status: 'paid', verified: true,
+                        createdAt: '2026-09-30T08:35:00+07:00', verifiedAt: '2026-09-30T08:36:00+07:00'
+                    },
+                    createdAt: '2026-09-30T08:34:00+07:00',
+                    updatedAt: '2026-09-30T08:36:00+07:00',
+                    timeline: [
+                        { status: ORDER_STATUS.WAITING, note: 'ชำระเงินแล้ว รอนักปั๊มรับงาน', actorId: 'U-DEMO-C003', actorName: 'กิตติพงศ์ คำดี', actorRole: 'customer', createdAt: '2026-09-30T08:34:00+07:00' }
+                    ]
+                }
+            ];
+
+            /* เพิ่มข้อมูลตัวอย่างโดยไม่ทับข้อมูลที่ผู้ใช้มีอยู่ */
+            const userIds = new Set(systemUsers.map(u => u.id));
+            demoUsers.forEach(user => {
+                if (!userIds.has(user.id)) systemUsers.push(user);
+            });
+
+            const orderIds = new Set(systemOrders.map(o => o.id));
+            demoOrders.forEach(order => {
+                if (!orderIds.has(order.id)) systemOrders.push(order);
+            });
+
+            const jobIds = new Set(jobPostings.map(j => j.id));
+            demoJobs.forEach(job => {
+                if (!jobIds.has(job.id)) jobPostings.push(job);
+            });
+
+            jobIdCounter = Math.max(jobIdCounter, 1007);
+            systemOrderCounter = Math.max(systemOrderCounter, 107);
+
+            /* สร้างประวัติการชำระเงินจาก Order ตัวอย่าง */
+            demoOrders.forEach(order => {
+                if (!systemPayments.some(p => p.orderId === order.id)) {
+                    systemPayments.push({
+                        ...order.payment,
+                        createdAt: order.payment.createdAt,
+                        verifiedAt: order.payment.verifiedAt
+                    });
+                }
+                systemOrderTimeline[order.id] = order.timeline;
+            });
+
+            /* แจ้งเตือนตัวอย่าง แยกตามผู้ใช้ */
+            const demoNotifications = [
+                {
+                    id: 'N-DEMO-001', userId: 'U-DEMO-C001', orderId: 'RB-20260925-0101',
+                    title: 'งานเสร็จสิ้น', message: 'คำสั่งซื้อ RB-20260925-0101 ตรวจสอบหลักฐานผ่านแล้ว', type: 'success', read: false, createdAt: '2026-09-25T13:45:00+07:00'
+                },
+                {
+                    id: 'N-DEMO-002', userId: 'U-DEMO-B002', orderId: 'RB-20260926-0102',
+                    title: 'กำลังดำเนินงาน', message: 'คำสั่งซื้อ RB-20260926-0102 อยู่ระหว่างดำเนินการ', type: 'info', read: false, createdAt: '2026-09-26T14:30:00+07:00'
+                },
+                {
+                    id: 'N-DEMO-003', userId: 'U-DEMO-B001', orderId: 'RB-20260927-0103',
+                    title: 'หลักฐานรอตรวจสอบ', message: 'คำสั่งซื้อ RB-20260927-0103 ถูกส่งหลักฐานแล้ว', type: 'warning', read: false, createdAt: '2026-09-27T17:10:00+07:00'
+                },
+                {
+                    id: 'N-DEMO-004', userId: 'U-DEMO-C003', orderId: 'RB-20260930-0106',
+                    title: 'รอนักปั๊มรับงาน', message: 'คำสั่งซื้อ RB-20260930-0106 ชำระเงินแล้วและกำลังรอผู้รับงาน', type: 'info', read: false, createdAt: '2026-09-30T08:36:00+07:00'
+                },
+                {
+                    id: 'N-DEMO-005', userId: 'U-DEMO-A001', orderId: 'RB-20260927-0103',
+                    title: 'มีหลักฐานรอตรวจสอบ', message: 'มีคำสั่งซื้อ RB-20260927-0103 รอการตรวจสอบหลักฐาน', type: 'warning', read: false, createdAt: '2026-09-27T17:10:00+07:00'
+                }
+            ];
+
+            const notificationIds = new Set(systemNotifications.map(n => n.id));
+            demoNotifications.forEach(n => {
+                if (!notificationIds.has(n.id)) systemNotifications.push(n);
+            });
+
+            /* Audit Log ตัวอย่าง */
+            const demoAudit = [
+                { id: 'A-DEMO-001', actorId: 'U-DEMO-C001', actorName: 'ณัฐพงษ์ ศรีทอง', actorRole: 'customer', action: 'CREATE_ORDER', targetType: 'ORDER', targetId: 'RB-20260925-0101', detail: 'สร้างคำสั่งซื้อ ROV และชำระเงิน', createdAt: '2026-09-25T09:10:00+07:00' },
+                { id: 'A-DEMO-002', actorId: 'U-DEMO-B001', actorName: 'ธนกร รุ่งเรือง', actorRole: 'booster', action: 'ACCEPT_JOB', targetType: 'ORDER', targetId: 'RB-20260925-0101', detail: 'รับงานปั๊ม ROV', createdAt: '2026-09-25T09:25:00+07:00' },
+                { id: 'A-DEMO-003', actorId: 'U-DEMO-B001', actorName: 'ธนกร รุ่งเรือง', actorRole: 'booster', action: 'SUBMIT_EVIDENCE', targetType: 'ORDER', targetId: 'RB-20260925-0101', detail: 'ส่งหลักฐานงานสำเร็จ', createdAt: '2026-09-25T13:20:00+07:00' },
+                { id: 'A-DEMO-004', actorId: 'U-DEMO-A001', actorName: 'ผู้ดูแลระบบ Demo', actorRole: 'admin', action: 'UPDATE_STATUS', targetType: 'ORDER', targetId: 'RB-20260925-0101', detail: 'ตรวจสอบหลักฐานและปิดงาน', createdAt: '2026-09-25T13:45:00+07:00' }
+            ];
+            const auditIds = new Set(systemAudit.map(a => a.id));
+            demoAudit.forEach(a => {
+                if (!auditIds.has(a.id)) systemAudit.push(a);
+            });
+
+            saveData(STORAGE_KEYS.users, systemUsers);
+            saveData(STORAGE_KEYS.orders, systemOrders);
+            saveData(STORAGE_KEYS.notifications, systemNotifications);
+            saveData(STORAGE_KEYS.history, systemHistory);
+            saveProData();
+            syncHistoryFromOrders();
+
+            localStorage.setItem(DEMO_VERSION_KEY, '1');
+        }
+
+        function createDemoAccountsPanel() {
+            const loginForm = document.getElementById('auth-login-form');
+            if (!loginForm || document.getElementById('demo-accounts-panel')) return;
+
+            const panel = document.createElement('div');
+            panel.id = 'demo-accounts-panel';
+            panel.className = 'mt-4 p-3 rounded-2xl bg-slate-800/50 border border-amber-500/10';
+            panel.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-[9px] text-amber-400 font-bold uppercase tracking-wider">
+                        <i class="fa-solid fa-database mr-1"></i>บัญชีตัวอย่างสำหรับทดสอบ
+                    </p>
+                    <span class="text-[8px] text-slate-500">OTP: 1234</span>
+                </div>
+                <div class="space-y-1.5">
+                    ${systemUsers.filter(user => String(user.id).startsWith('U-DEMO-')).map(user => `
+                        <button type="button" onclick="useDemoAccount('${user.phone}')" class="w-full flex items-center justify-between px-2.5 py-2 rounded-lg bg-slate-950/50 border border-slate-700/50 hover:border-amber-500/30 text-left">
+                            <span>
+                                <span class="block text-[9px] text-white font-medium">${escapeHTML(user.name)}</span>
+                                <span class="block text-[8px] text-slate-500 mt-0.5">${user.phone}</span>
+                            </span>
+                            <span class="text-[8px] ${user.role === 'booster' ? 'text-blue-400' : user.role === 'admin' ? 'text-red-400' : 'text-emerald-400'}">${roleLabel(user.role)}</span>
+                        </button>
+                    `).join('')}
+                </div>
+                <p class="text-[7px] text-slate-600 mt-2 leading-relaxed">หมายเหตุ: ข้อมูลทั้งหมดเป็นข้อมูลสมมติสำหรับสาธิตระบบ ไม่ใช่ข้อมูลบุคคลจริง</p>
+            `;
+            loginForm.appendChild(panel);
+        }
+
+        window.useDemoAccount = function(phone) {
+            const input = document.getElementById('phone-input');
+            const otp = document.getElementById('otp-input');
+            if (input) input.value = phone;
+            const otpSection = document.getElementById('otp-section');
+            if (otpSection) otpSection.classList.remove('hidden');
+            if (otp) otp.value = '1234';
+            const user = systemUsers.find(u => u.phone === phone);
+            if (user) {
+                const role = roleLabel(user.role);
+                const title = document.querySelector('#otp-section p');
+                if (title) title.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i>บัญชีตัวอย่าง: ${escapeHTML(user.name)} (${role}) <span class="text-white">• OTP 1234</span>`;
+            }
+        };
+
+        seedDemoData();
+        createDemoAccountsPanel();
 
         /* =========================
            INITIALIZATION
